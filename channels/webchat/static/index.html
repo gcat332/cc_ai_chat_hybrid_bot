@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ศูนย์บริการลูกค้า</title>
+<style>
+  :root { --brand: #0b6e4f; --bg: #f4f6f5; --bot: #ffffff; --me: #0b6e4f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Sarabun", "Noto Sans Thai", "Loma", "Tahoma", sans-serif;
+         background: var(--bg); display: flex; justify-content: center; }
+  .chat { width: 100%; max-width: 440px; height: 100vh; display: flex; flex-direction: column;
+          background: var(--bg); box-shadow: 0 0 24px rgba(0,0,0,.08); }
+  header { background: var(--brand); color: #fff; padding: 14px 16px; display: flex;
+           align-items: center; gap: 10px; }
+  header .dot { width: 10px; height: 10px; border-radius: 50%; background: #7CFC9A; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header small { opacity: .85; display: block; font-size: 12px; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 82%; padding: 9px 13px; border-radius: 16px; line-height: 1.55;
+         white-space: pre-wrap; font-size: 15px; }
+  .bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px;
+         box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .me { background: var(--me); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .ai-tag { display: block; margin-top: 4px; font-size: 11px; color: #888; }
+  .note { align-self: center; font-size: 12px; color: #666; background: #e6ece9;
+          padding: 4px 10px; border-radius: 10px; }
+  #quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
+  #quick button { border: 1px solid var(--brand); color: var(--brand); background: #fff;
+                  border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  #quick button:hover { background: #e9f4ef; }
+  form { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid #e3e3e3; }
+  input { flex: 1; border: 1px solid #ccc; border-radius: 20px; padding: 10px 14px; font: inherit; font-size: 15px; }
+  input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+  form button { background: var(--brand); color: #fff; border: 0; border-radius: 20px;
+                padding: 0 18px; font: inherit; cursor: pointer; }
+  form button:disabled, input:disabled { opacity: .5; }
+  .icon { border: 0; background: transparent; font-size: 20px; cursor: pointer; padding: 0 6px; }
+  header .icon { margin-left: auto; color: #fff; }
+  form .icon { border: 1px solid #ccc; border-radius: 50%; width: 42px; height: 42px; padding: 0;
+               background: #fff; color: var(--brand); flex: none; }
+  form .icon.on { background: #d93025; border-color: #d93025; color: #fff;
+                  animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(217,48,37,.25); } }
+</style>
+</head>
+<body>
+<div class="chat">
+  <header><span class="dot"></span><div><h1>ศูนย์บริการลูกค้า</h1><small>ผู้ช่วยอัตโนมัติ · พิมพ์หรือพูดก็ได้</small></div>
+    <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button></header>
+  <div id="log" aria-live="polite"></div>
+  <div id="quick"></div>
+  <form id="form">
+    <button id="mic" class="icon" type="button" aria-pressed="false" title="กดแล้วพูด">🎤</button>
+    <input id="text" autocomplete="off" placeholder="พิมพ์ข้อความ หรือกดไมค์เพื่อพูด" aria-label="ข้อความ">
+    <button>ส่ง</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById("log"), quick = document.getElementById("quick");
+const form = document.getElementById("form"), input = document.getElementById("text");
+let sessionId = sessionStorage.getItem("chat_session") || crypto.randomUUID();
+sessionStorage.setItem("chat_session", sessionId);
+
+function add(text, cls) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.textContent = text;           // textContent, never innerHTML: no script injection
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function note(text) { add(text, "note"); }
+
+function show(reply) {
+  add(reply.text, "bot");
+  if (reply.intent === "fallback") {  // written by AI, not by the rules: say so
+    const tag = document.createElement("small");
+    tag.className = "ai-tag"; tag.textContent = "ตอบโดย AI · อาจคลาดเคลื่อนได้";
+    log.lastChild.appendChild(tag);
+  }
+  speak(reply);
+  quick.innerHTML = "";
+  for (const label of reply.quick_replies || []) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    b.onclick = () => send(label);
+    quick.appendChild(b);
+  }
+  if (reply.handoff) note("กำลังเชื่อมต่อเจ้าหน้าที่…");
+  if (reply.end) {
+    note("จบการสนทนา");
+    sessionId = crypto.randomUUID();
+    sessionStorage.setItem("chat_session", sessionId);
+  }
+}
+
+// Two ways to run the same bot:
+// * server mode: channels/webchat/server.py answers at api/ (real backend, production)
+// * browser mode: no server (GitHub Pages), so the Python bot runs in the page with Pyodide.
+//   Demo only: real customer data and API keys must never be shipped to the browser.
+const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v314.0.8/full/";
+let mode = null, py = null;
+
+async function useServer() {
+  try { return (await fetch("api/health")).ok; } catch { return false; }
+}
+
+async function loadBrowserBot() {
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = PYODIDE_URL + "pyodide.js"; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  py = await loadPyodide({ indexURL: PYODIDE_URL });
+  const files = await (await fetch("callcenter_bot/files.json")).json();
+  py.FS.mkdirTree("/app/callcenter_bot");
+  for (const f of files) {
+    py.FS.writeFile("/app/callcenter_bot/" + f, await (await fetch("callcenter_bot/" + f)).text());
+  }
+  py.runPython(`
+import json, sys
+sys.path.insert(0, "/app")
+from callcenter_bot import Bot
+_bot = Bot()
+def _chat(sid, message):
+    return json.dumps({"session_id": sid, **_bot.reply(sid, message).to_dict()}, ensure_ascii=False)
+def _start(sid):
+    _bot.reset(sid)
+    return json.dumps({"session_id": sid, **_bot.welcome().to_dict()}, ensure_ascii=False)
+`);
+}
+
+async function call(path, body) {
+  if (mode === "browser") {
+    const fn = py.globals.get(path === "api/start" ? "_start" : "_chat");
+    const args = path === "api/start" ? [sessionId] : [sessionId, body.message];
+    return JSON.parse(fn(...args));
+  }
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ session_id: sessionId, ...body }) });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function send(text, fromVoice = false) {
+  voiceTurn = fromVoice;
+  text = text.trim();
+  if (!text) return;
+  add(text, "me");
+  input.value = ""; quick.innerHTML = "";
+  try { show(await call("api/chat", { message: text })); }
+  catch { note("ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง"); }
+  input.focus();
+}
+
+form.onsubmit = e => { e.preventDefault(); send(input.value); };
+
+// ---- Voice: speak to the bot and hear it answer (Web Speech API, Thai) ---------------------
+// Speech recognition: Chrome, Edge, Safari (not Firefox). Needs HTTPS or localhost.
+// In Chrome the audio is recognised by Google's servers (tell customers in your privacy notice).
+const micBtn = document.getElementById("mic"), speakBtn = document.getElementById("speak");
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const canSpeak = "speechSynthesis" in window;
+let recognizer = null, listening = false, speakOn = false, voiceTurn = false;
+let thaiVoice = null, warnedNoVoice = false;
+
+function pickThaiVoice() {
+  thaiVoice = speechSynthesis.getVoices()
+    .find(v => v.lang.replace("_", "-").toLowerCase().startsWith("th")) || null;
+}
+if (canSpeak) { pickThaiVoice(); speechSynthesis.onvoiceschanged = pickThaiVoice; }
+else speakBtn.hidden = true;
+
+function setSpeak(on) {
+  speakOn = on && canSpeak;
+  speakBtn.textContent = speakOn ? "🔊" : "🔈";
+  speakBtn.setAttribute("aria-pressed", speakOn);
+  speakBtn.title = speakOn ? "ปิดเสียงตอบกลับ" : "เปิดเสียงตอบกลับ";
+  if (!speakOn && canSpeak) speechSynthesis.cancel();
+  if (speakOn && !thaiVoice && !warnedNoVoice) {
+    warnedNoVoice = true;
+    note("อุปกรณ์นี้อาจไม่มีเสียงอ่านภาษาไทย ถ้าไม่ได้ยินเสียง ให้ติดตั้งเสียงภาษาไทยในการตั้งค่าเครื่อง");
+  }
+}
+speakBtn.onclick = () => setSpeak(!speakOn);
+
+function speak(reply) {
+  if (!speakOn) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(reply.text.replace(/\s*\n\s*/g, " "));
+  u.lang = "th-TH";
+  if (thaiVoice) u.voice = thaiVoice;
+  // Hands-free: after the bot finishes speaking, listen again, like a phone call.
+  u.onend = () => { if (voiceTurn && !reply.end && !reply.handoff && Recognition) listen(); };
+  speechSynthesis.speak(u);
+}
+
+function setListening(on) {
+  listening = on;
+  micBtn.classList.toggle("on", on);
+  micBtn.setAttribute("aria-pressed", on);
+  micBtn.title = on ? "หยุดฟัง" : "กดแล้วพูด";
+  input.placeholder = on ? "กำลังฟัง… พูดได้เลย" : "พิมพ์ข้อความ หรือกดไมค์เพื่อพูด";
+}
+
+function listen() {
+  if (listening) return;
+  if (canSpeak) speechSynthesis.cancel();  // the customer can interrupt the bot
+  if (!speakOn) setSpeak(true);            // talking to the bot: it talks back
+  recognizer = new Recognition();
+  recognizer.lang = "th-TH";
+  recognizer.interimResults = true;
+  recognizer.continuous = false;
+  let heard = "";
+  recognizer.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) heard += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    input.value = heard + interim;
+  };
+  recognizer.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed")
+      note("ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์");
+    else if (e.error === "no-speech") note("ไม่ได้ยินเสียง กดไมค์แล้วพูดอีกครั้งได้เลย");
+  };
+  recognizer.onend = () => {
+    setListening(false);
+    if (heard.trim()) send(heard, true);
+    else input.value = "";
+  };
+  setListening(true);
+  recognizer.start();
+}
+
+if (Recognition) micBtn.onclick = () => listening ? recognizer.stop() : listen();
+else micBtn.hidden = true;  // e.g. Firefox: typing still works
+async function init() {
+  input.disabled = true;
+  mode = (await useServer()) ? "server" : "browser";
+  if (mode === "browser") {
+    note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลลูกค้าเป็นข้อมูลตัวอย่าง");
+    note("กำลังโหลดผู้ช่วย… (ครั้งแรกอาจใช้เวลาสักครู่)");
+    await loadBrowserBot();
+    log.lastChild.remove();  // the loading note
+  }
+  show(await call("api/start", {}));
+  input.disabled = false;
+  input.focus();
+}
+init().catch(() => note("เชื่อมต่อระบบไม่สำเร็จ กรุณารีเฟรชหน้าอีกครั้ง"));
+</script>
+</body>
+</html>
