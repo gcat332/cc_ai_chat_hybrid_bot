@@ -82,7 +82,7 @@ class CallSession:
                 if not self.running:
                     break
         except Exception as e:   # a dropped connection ends the call quietly
-            log.info("call %s: connection ended (%s)", self._tag(), type(e).__name__)
+            log.info("call %s: connection ended (%s: %s)", self._tag(), type(e).__name__, e)
         finally:
             await self._stop()
 
@@ -125,7 +125,14 @@ class CallSession:
         log.info("call %s: opened", self._tag())
         self.recognizer = self.speech.make_recognizer(self.loop, self._on_speech)
         self.tasks = [asyncio.create_task(t) for t in (self._send_audio(), self._answer_turns(), self._watch_silence())]
-        await self._speak(self.bot.welcome().speech)
+        try:
+            await self._speak(self.bot.welcome().speech)
+        except Exception as e:   # e.g. a wrong Azure key: nothing can be said, so hand the call to a person
+            log.error("call %s: text-to-speech failed, handing over: %s", self._tag(), e)
+            self.disconnecting = True
+            self.outcome.update(intent="live-agent-handoff", handoffReason="speech_error")
+            self._finish_outcome()
+            await self._send(self.proto.disconnect("completed", "speech_error", self.outcome))
 
     # ---- caller input -----------------------------------------------------------------------
     def _on_audio(self, frame: bytes):

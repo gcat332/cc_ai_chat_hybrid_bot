@@ -23,7 +23,8 @@ LOG="$(mktemp -d)/cloudflared.log"
 export TLS_BY_PROXY=1   # the tunnel provides https/wss
 extra=()
 [ "${FAKE_SPEECH:-}" = "1" ] && extra+=(--fake-speech)
-"$PYTHON" -m channels.audio_connector.server --host 127.0.0.1 --port "$PORT" "${extra[@]}" &
+# ${extra[@]+...}: macOS ships bash 3.2, where an empty "${extra[@]}" fails under set -u
+"$PYTHON" -m channels.audio_connector.server --host 127.0.0.1 --port "$PORT" ${extra[@]+"${extra[@]}"} &
 BOT=$!
 cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$PORT" >"$LOG" 2>&1 &
 TUNNEL=$!

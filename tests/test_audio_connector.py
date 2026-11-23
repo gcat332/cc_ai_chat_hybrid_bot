@@ -247,6 +247,19 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await g.open()
         self.assertIn("สวัสดีค่ะ", await g.hear())
 
+    async def test_voice_failure_hands_over(self):
+        """A wrong Azure key means the bot cannot speak: the call goes to a person at once."""
+        class BrokenVoice(FakeSpeech):
+            async def synthesize(self, text):
+                raise RuntimeError("Azure text-to-speech failed: 401 Unauthorized")
+        await self.start(BrokenVoice())
+        g = await self.call()
+        with self.assertLogs("audio_connector", "ERROR") as logs:
+            await g.open()
+            v = (await g.message("disconnect"))["parameters"]["outputVariables"]
+        self.assertEqual((v["intent"], v["handoffReason"]), ("live-agent-handoff", "speech_error"))
+        self.assertIn("text-to-speech failed", logs.output[0])
+
     async def test_security_and_health(self):
         await self.start()
         with self.assertRaises(InvalidStatus) as e:
