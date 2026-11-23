@@ -235,9 +235,10 @@ container on the same Docker network and use `reverse_proxy voicebot:8080`.
       | `intent` | `live-agent-handoff`, `end-conversation`, `no-response`, `caller-hung-up` |
       | `handoffReason` | `agent` (asked for a person), `verify_failed`, `speech_error`, `adapter_error` |
       | `verifiedPhone` | phone number that passed the ID check, or empty |
-      | `ticket` | e.g. `TK1001` when a problem was reported |
+      | `ticket` | case number, e.g. `CS0001001`, when a case was opened or looked up |
       | `topics` | e.g. `check_balance,report_problem` |
       | `lastCustomerText` | the caller's last words (numbers masked) |
+      | `orderId` | the order talked about, e.g. `636538` |
       | `ani`, `turns` | caller number, number of turns |
 
    4. After the action:

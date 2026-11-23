@@ -1,7 +1,7 @@
 """Admin actions on the tables, shared by the web server and the in-browser (GitHub Pages) demo."""
 from . import db
 
-TABLES = ("customers", "orders", "tickets")
+TABLES = ("customers", "orders", db.CASE_TABLE)
 
 
 def save(table: str, row: dict, old_key=None) -> dict:
@@ -11,8 +11,8 @@ def save(table: str, row: dict, old_key=None) -> dict:
             db.save_customer(row, old_key or None)
         elif table == "orders":
             db.save_order(row, old_key or None)
-        elif table == "tickets":
-            db.save_ticket(row)
+        elif table == db.CASE_TABLE:
+            db.save_case(row, old_key)
         else:
             return {"error": "ไม่มีตารางนี้"}
     except db.InvalidRow as e:

@@ -1,7 +1,10 @@
 import unittest
 
-from callcenter_bot import Bot, backend, db
+from callcenter_bot import Bot, backend, config, db
 from callcenter_bot.thai_format import speech_text
+
+# Agent hours are tested in test_bot.ProactiveTest; here a handoff must work at any time of day.
+config.AGENT_HOURS = None
 
 
 class DatabaseTest(unittest.TestCase):
@@ -15,8 +18,8 @@ class DatabaseTest(unittest.TestCase):
     def test_seeded_demo_rows(self):
         tables = db.all_tables()
         self.assertEqual(len(tables["customers"]), 4)
-        self.assertEqual(len(tables["orders"]), 4)
-        self.assertEqual(tables["tickets"], [])
+        self.assertEqual(len(tables["orders"]), 5)
+        self.assertEqual(tables[db.CASE_TABLE], [])
 
     def test_test_number_0636538939(self):
         r = self.say("เช็คยอด", "063-653-8939", "8939")
@@ -34,14 +37,20 @@ class DatabaseTest(unittest.TestCase):
 
     def test_ticket_is_stored(self):
         r = self.say("อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้าครับ", "ใช่")
-        ticket = db.all_tables()["tickets"][0]
-        self.assertIn(ticket["ticket_no"], r.text)
-        self.assertEqual(ticket["description"], "อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้า")
-        self.assertEqual(ticket["status"], "รอดำเนินการ")
+        self.assertIn("เบอร์โทรสำหรับติดต่อกลับ", r.text)        # not verified: where to call back?
+        r = self.say("089-999-9999")
+        case = db.all_tables()[db.CASE_TABLE][0]
+        self.assertIn(case["number"], r.text)
+        self.assertEqual(case["number"], "CS0001001")
+        self.assertRegex(case["sys_id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(case["short_description"], "อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้า")
+        self.assertEqual((case["state"], case["priority"]), (1, 4))          # New, Low
+        self.assertEqual((case["consumer"], case["callback_phone"], case["category"]),
+                         (None, "0899999999", "report_problem"))
 
     def test_ticket_remembers_verified_phone(self):
         self.say("เช็คยอด", "0812345678", "1234", "แจ้งปัญหา", "เน็ตหลุดบ่อยมาก", "ใช่")
-        self.assertEqual(db.all_tables()["tickets"][0]["phone"], "0812345678")
+        self.assertEqual(db.all_tables()[db.CASE_TABLE][0]["consumer"], "0812345678")
 
     def test_order_without_date_or_tracking(self):
         db.save_order({"order_id": "777777", "status": "รอชำระเงิน"})

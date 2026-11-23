@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ข้อมูลจำลอง</title>
+<style>
+  :root { --brand: #0b6e4f; --bg: #f4f6f5; --line: #e1e6e3; --muted: #5f6b66; --danger: #c5221f; --ink: #1d2b25; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Sarabun", "Noto Sans Thai", "Loma", "Tahoma", sans-serif;
+         background: var(--bg); color: var(--ink); font-size: 15px; }
+  header { background: var(--brand); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .db { opacity: .8; font-size: 12px; flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+  header .btn { background: transparent; border-color: rgba(255,255,255,.6); color: #fff; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .tabs { display: flex; gap: 4px; background: #e3e9e6; padding: 4px; border-radius: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tabs button { border: 0; background: transparent; padding: 7px 14px; border-radius: 8px; font: inherit; cursor: pointer; color: var(--ink); }
+  .tabs button[aria-selected="true"] { background: #fff; color: var(--brand); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .tabs .count { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .note { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+  .note.warn { background: #fff8e1; border: 1px solid #f3df9c; border-radius: 8px; padding: 8px 12px; color: #6b5300; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  #search { flex: 1; min-width: 180px; padding: 8px 12px; border: 1px solid #ccd5d0; border-radius: 8px; font: inherit; }
+  .btn { border: 1px solid var(--brand); background: var(--brand); color: #fff; padding: 7px 14px;
+         border-radius: 8px; font: inherit; cursor: pointer; white-space: nowrap; }
+  .btn.ghost { background: #fff; color: var(--brand); }
+  .btn.danger { background: #fff; color: var(--danger); border-color: #e7b4b2; }
+  .btn.small { padding: 3px 10px; font-size: 13px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; background: #fafcfb; white-space: nowrap; }
+  td { max-width: 360px; overflow-wrap: anywhere; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.actions { text-align: right; white-space: nowrap; }
+  td .empty-cell { color: #b3bcb8; }
+  td .nowrap { white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 12px; font-size: 13px; background: #eef3f0; white-space: nowrap; }
+  dialog { border: 0; border-radius: 12px; padding: 0; width: min(520px, 94vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  dialog form { padding: 18px 20px; display: grid; gap: 12px; max-height: 86vh; overflow-y: auto; }
+  dialog h2 { margin: 0; font-size: 17px; }
+  label { display: grid; gap: 4px; font-size: 14px; color: #33433b; }
+  label input, label select, label textarea { padding: 8px 10px; border: 1px solid #ccd5d0; border-radius: 8px; font: inherit; font-size: 15px; }
+  label textarea { min-height: 70px; resize: vertical; }
+  label small { color: var(--muted); }
+  .req { color: var(--danger); }
+  #formError { color: var(--danger); font-size: 14px; min-height: 18px; }
+  .row-end { display: flex; justify-content: flex-end; gap: 8px; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1d2b25; color: #fff;
+           padding: 8px 16px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: .95; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ข้อมูลจำลองของบอท</h1>
+  <span class="db" id="dbPath"></span>
+  <button class="btn" id="reload" type="button">โหลดใหม่</button>
+  <button class="btn" id="reset" type="button">รีเซ็ตเป็นข้อมูลตัวอย่าง</button>
+</header>
+<main>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <p class="note" id="tableNote"></p>
+  <div class="bar">
+    <input id="search" type="search" placeholder="ค้นหาในตารางนี้" aria-label="ค้นหา">
+    <button class="btn" id="add" type="button">เพิ่มแถว</button>
+  </div>
+  <div class="card"><table id="grid"></table></div>
+</main>
+<dialog id="editor">
+  <form method="dialog" id="form">
+    <h2 id="formTitle"></h2>
+    <div id="fields" style="display:grid;gap:12px"></div>
+    <div id="formError" role="alert"></div>
+    <div class="row-end">
+      <button class="btn ghost" type="button" id="cancel">ยกเลิก</button>
+      <button class="btn" type="submit">บันทึก</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" role="status"></div>
+<script>
+// What each table and column means. Tables or columns not listed still show, with their raw names.
+const TABLES = {
+  customers: { title: "ลูกค้า", note: "ใช้ยืนยันตัวตนและเช็คยอดค้างชำระ" },
+  orders: { title: "คำสั่งซื้อ", note: "ใช้ติดตามพัสดุ ยกเลิก เปลี่ยนที่อยู่ และคืนสินค้า วันที่คาดว่าจะได้รับที่ผ่านไปแล้วทำให้บอทเสนอเปิดเรื่องพัสดุล่าช้า" },
+  sn_customerservice_case: { title: "เรื่องที่แจ้ง (Case)",
+    note: "รูปแบบเดียวกับตาราง Case ของ ServiceNow (sn_customerservice_case) บอทเปิดเคสเมื่อลูกค้าแจ้งปัญหาหรือขอให้ติดต่อกลับ ลูกค้าเช็คสถานะด้วยเลข CS ได้ เมื่อเชื่อม ServiceNow จริง เคสจะไปอยู่ใน ServiceNow แทนตารางนี้" },
+  faq: { title: "คำถามที่พบบ่อย (FAQ)", warn: true,
+         note: "บอทตอบจากตารางนี้ทันทีที่บันทึก คำตอบตั้งต้นเป็นข้อความตัวอย่าง ต้องแก้ให้ตรงนโยบายจริงก่อนใช้งาน" },
+};
+const COLS = {
+  phone: { label: "เบอร์โทร" }, name: { label: "ชื่อ" },
+  id_last4: { label: "เลขบัตร 4 ตัวท้าย", hint: "ใช้ยืนยันตัวตน" },
+  balance: { label: "ยอดค้างชำระ (บาท)" }, due_date: { label: "วันครบกำหนด", date: true },
+  order_id: { label: "เลขคำสั่งซื้อ", hint: "ตัวเลข 6 หลัก" },
+  status: { label: "สถานะ", list: ["รอชำระเงิน", "กำลังเตรียมสินค้า", "กำลังจัดส่ง", "จัดส่งสำเร็จแล้ว", "ยกเลิกแล้ว",
+                                   "รอดำเนินการ", "กำลังดำเนินการ", "เสร็จสิ้น"] },
+  carrier: { label: "ขนส่ง" }, tracking: { label: "เลขพัสดุ" },
+  eta: { label: "วันที่ได้รับ / คาดว่าจะได้รับ", date: true },
+  description: { label: "รายละเอียด", long: true }, category: { label: "ประเภท (category)" },
+  sys_id: { label: "sys_id", readonly: true }, number: { label: "เลขเคส", readonly: true, hint: "ระบบออกเลขให้ เช่น CS0001001" },
+  short_description: { label: "หัวเรื่อง (short_description)" },
+  priority: { label: "ความสำคัญ (priority)", options: { 1: "1 - Critical", 2: "2 - High", 3: "3 - Moderate", 4: "4 - Low" } },
+  contact_type: { label: "ช่องทาง (contact_type)", list: ["phone", "web", "chat", "email"] },
+  consumer: { label: "เบอร์ลูกค้า (ยืนยันตัวตนแล้ว)", hint: "ใน ServiceNow คือ consumer (อ้างถึงระเบียนลูกค้า)" },
+  close_notes: { label: "บันทึกการแก้ไข (close_notes)", long: true }, opened_at: { label: "วันที่เปิดเคส", readonly: true },
+  callback_phone: { label: "เบอร์ติดต่อกลับ", hint: "ลูกค้าที่ไม่ได้ยืนยันตัวตนให้ไว้" },
+  topic: { label: "รหัสหัวข้อ", hint: "อังกฤษพิมพ์เล็กและ _ เช่น late_fee ใช้เป็นเหตุผลการโอนด้วย" },
+  title: { label: "หัวข้อ" },
+  keywords: { label: "คำที่ลูกค้าพูด", long: true, hint: "คั่นด้วยเครื่องหมายจุลภาค (,) ไม่ต้องเว้นวรรคในคำ" },
+  answer: { label: "คำตอบ", long: true, hint: "ประโยคที่บอทพูด เขียนให้อ่านออกเสียงได้" },
+  action: { label: "หลังตอบ", options: { answer: "ตอบอย่างเดียว", offer_ticket: "ตอบแล้วเสนอเปิดเรื่อง", handoff: "ตอบแล้วโอนเจ้าหน้าที่" } },
+};
+// Labels that differ per table.
+const TABLE_COLS = {
+  sn_customerservice_case: { state: { label: "สถานะ (state)", options: {
+    1: "New - รับเรื่องแล้ว", 10: "Open - กำลังดำเนินการ", 18: "Awaiting Info - รอข้อมูลลูกค้า",
+    6: "Resolved - แก้ไขแล้ว", 3: "Closed - ปิดเรื่อง", 7: "Cancelled - ยกเลิก" } } },
+  orders: { phone: { label: "เบอร์ลูกค้า", hint: "ต้องมีในตารางลูกค้า (เว้นว่างได้)" } } };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let tables = [], current = "customers", editing = null;
+
+const colInfo = (table, name) => ({ label: name, ...(COLS[name] || {}), ...((TABLE_COLS[table] || {})[name] || {}) });
+const tableOf = name => tables.find(t => t.name === name);
+// Column order on screen (the rest follow); the table itself keeps ServiceNow's field order.
+const FIRST = { sn_customerservice_case: ["number", "state", "short_description", "category", "contact_type", "consumer",
+                                          "callback_phone", "order_id", "opened_at", "priority", "close_notes", "description"] };
+const shownColumns = t => {
+  const first = (FIRST[t.name] || []).map(n => t.columns.find(c => c.name === n)).filter(Boolean);
+  return [...first, ...t.columns.filter(c => !first.includes(c))];
+};
+
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const data = await r.json().catch(() => ({ error: `ระบบตอบผิดพลาด (${r.status})` }));
+  if (!r.ok) throw new Error(data.error || `ระบบตอบผิดพลาด (${r.status})`);
+  return data;
+}
+
+async function load() {
+  try {
+    const data = await api("api/tables");
+    tables = data.tables;
+    $("dbPath").textContent = "ฐานข้อมูล: " + data.database;
+    if (!tableOf(current)) current = tables[0]?.name;
+    render();
+  } catch (e) {
+    $("grid").innerHTML = `<tr><td class="empty">โหลดข้อมูลไม่สำเร็จ: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function show(table, col, value) {
+  if (value === null || value === undefined || value === "") return '<span class="empty-cell">–</span>';
+  if (col === "sys_id") return `<span title="${esc(value)}">${esc(String(value).slice(0, 8))}…</span>`;
+  if (["number", "phone", "consumer", "callback_phone", "order_id", "due_date", "eta", "opened_at"].includes(col))
+    return `<span class="nowrap">${esc(value)}</span>`;
+  if (col === "balance") return Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+  if (col === "status" || col === "action" || col === "category" || col === "state" || col === "priority") {
+    const opts = colInfo(table, col).options;
+    return `<span class="pill">${esc(opts?.[value] || value)}</span>`;
+  }
+  return esc(value);
+}
+
+function render() {
+  $("tabs").innerHTML = tables.map(t => `<button role="tab" aria-selected="${t.name === current}" data-t="${t.name}">
+    ${esc(TABLES[t.name]?.title || t.name)}<span class="count">${t.rows.length}</span></button>`).join("");
+  const t = tableOf(current); if (!t) return;
+  const info = TABLES[t.name] || {};
+  $("tableNote").textContent = info.note || "";
+  $("tableNote").className = "note" + (info.warn ? " warn" : "");
+  const q = $("search").value.trim().toLowerCase();
+  const rows = t.rows.filter(r => !q || Object.values(r).some(v => String(v ?? "").toLowerCase().includes(q)));
+  const cols = shownColumns(t);
+  const head = cols.map(c => `<th>${esc(colInfo(t.name, c.name).label)}</th>`).join("") + "<th></th>";
+  const body = rows.map(r => `<tr>${cols.map(c =>
+      `<td class="${c.type === "REAL" ? "num" : ""}">${show(t.name, c.name, r[c.name])}</td>`).join("")}
+      <td class="actions"><button class="btn ghost small" data-edit="${esc(r[t.key])}">แก้ไข</button>
+      <button class="btn danger small" data-del="${esc(r[t.key])}">ลบ</button></td></tr>`).join("");
+  $("grid").innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body ||
+    `<tr><td class="empty" colspan="${cols.length + 1}">${q ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูล"}</td></tr>`}</tbody>`;
+}
+
+function field(table, c, value) {
+  const info = colInfo(table, c.name);
+  const id = "f_" + c.name, v = esc(value ?? "");
+  const req = c.required && c.default === null && !info.readonly ? ' <span class="req">*</span>' : "";
+  let input;
+  if (info.readonly) input = `<input id="${id}" value="${v}" disabled>`;
+  else if (info.options) input = `<select id="${id}">${Object.entries(info.options).map(([k, label]) =>
+      `<option value="${k}" ${String(k) === String(value ?? (c.name === "action" ? "answer" : c.default ?? "")) ? "selected" : ""}>${esc(label)}${
+        c.name === "action" ? ` (${k})` : ""}</option>`).join("")}</select>`;
+  else if (info.long) input = `<textarea id="${id}">${v}</textarea>`;
+  else if (info.date) input = `<input id="${id}" type="date" value="${v}">`;
+  else if (info.list) input = `<input id="${id}" value="${v}" list="${id}_list"><datalist id="${id}_list">${
+      info.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>`;
+  else input = `<input id="${id}" value="${v}" ${c.type === "REAL" || c.type === "INTEGER" ? 'inputmode="decimal"' : ""}>`;
+  return `<label>${esc(info.label)}${req}${input}${info.hint ? `<small>${esc(info.hint)}</small>` : ""}</label>`;
+}
+
+function openEditor(key) {
+  const t = tableOf(current);
+  const row = key === null ? {} : t.rows.find(r => String(r[t.key]) === String(key));
+  editing = { table: t.name, key };
+  $("formTitle").textContent = (key === null ? "เพิ่ม" : "แก้ไข") + (TABLES[t.name]?.title || t.name);
+  const cols = shownColumns(t).filter(c => !(key === null && colInfo(t.name, c.name).readonly));
+  $("fields").innerHTML = cols.map(c => field(t.name, c, row[c.name])).join("");
+  $("formError").textContent = "";
+  $("editor").showModal();
+  $("fields").querySelector("input:not([disabled]),textarea,select")?.focus();
+}
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const t = tableOf(editing.table), row = {};
+  for (const c of t.columns) {
+    const el = $("f_" + c.name);
+    if (el && !el.disabled) row[c.name] = el.value;
+  }
+  try {
+    await api("api/save", { table: t.name, row, key: editing.key });
+    $("editor").close(); toast("บันทึกแล้ว บอทใช้ข้อมูลใหม่ทันที"); load();
+  } catch (err) { $("formError").textContent = err.message; }
+};
+$("cancel").onclick = () => $("editor").close();
+
+$("grid").onclick = async e => {
+  const edit = e.target.dataset.edit, del = e.target.dataset.del;
+  if (edit !== undefined) openEditor(edit);
+  if (del !== undefined) {
+    const t = tableOf(current);
+    const row = t.rows.find(r => String(r[t.key]) === String(del));
+    const name = row?.number || del;
+    if (!confirm(`ลบ ${name} จาก${TABLES[t.name]?.title || t.name}?`)) return;
+    try { await api("api/delete", { table: t.name, key: del }); toast("ลบแล้ว"); load(); }
+    catch (err) { alert(err.message); }
+  }
+};
+$("tabs").onclick = e => {
+  const b = e.target.closest("button[data-t]"); if (!b) return;
+  current = b.dataset.t; $("search").value = ""; render();
+};
+$("search").oninput = render;
+$("add").onclick = () => openEditor(null);
+$("reload").onclick = () => { load(); toast("โหลดข้อมูลใหม่แล้ว"); };
+$("reset").onclick = async () => {
+  if (!confirm("ลบข้อมูลทั้งหมดแล้วใส่ข้อมูลตัวอย่างกลับเข้าไป (รวมเรื่องที่แจ้งและ FAQ ที่แก้ไว้) ต้องการทำต่อไหม?")) return;
+  try { await api("api/reset", {}); toast("รีเซ็ตแล้ว"); load(); } catch (err) { alert(err.message); }
+};
+load();
+</script>
+</body>
+</html>

@@ -158,7 +158,7 @@ Admin → Integrations → **+ Integrations** → ค้นหา **Audio Connec
      | `intent` | `Flow.intent` | `live-agent-handoff`, `end-conversation`, `no-response`, `caller-hung-up` |
      | `handoffReason` | `Flow.handoffReason` | `agent`, `verify_failed`, `speech_error`, `adapter_error` |
      | `verifiedPhone` | `Flow.verifiedPhone` | เบอร์ที่ยืนยันตัวตนผ่านแล้ว หรือว่าง |
-     | `ticket` | `Flow.ticket` | เช่น `TK1001` |
+     | `ticket` | `Flow.ticket` | เช่น `CS0001001` |
      | `topics` | `Flow.topics` | เช่น `check_balance,report_problem` |
      | `lastCustomerText` | `Flow.lastCustomerText` | ประโยคล่าสุดของลูกค้า (ตัวเลขถูกปิดบัง) |
 

@@ -28,7 +28,9 @@ from . import protocol
 
 log = logging.getLogger("audio_connector")
 P, Q = config.STATEMENT_PARTICLE, config.QUESTION_PARTICLE
-TOPICS = {"check_balance", "order_status", "report_problem", "ticket_created", "payment_channels", "hours"}
+TOPICS = {"check_balance", "order_status", "report_problem", "ticket_created", "payment_channels", "hours",
+          "ticket_status", "order_cancel", "order_change_address", "order_late", "order_not_received",
+          "order_return"}
 
 
 @dataclass
@@ -67,7 +69,7 @@ class CallSession:
         self.dtmf_task = None
         self.tasks = []
         # What Architect gets back
-        self.outcome = {"intent": "", "handoffReason": "", "verifiedPhone": "", "ticket": "",
+        self.outcome = {"intent": "", "handoffReason": "", "verifiedPhone": "", "ticket": "", "orderId": "",
                         "topics": "", "lastCustomerText": "", "turns": "0", "ani": ""}
         self.topics = []
 
@@ -222,7 +224,10 @@ class CallSession:
         session = self.bot.sessions.get(self.key)
         if session and session.verified_phone:
             self.outcome["verifiedPhone"] = session.verified_phone
-        ticket = re.search(r"TK\d+", reply.text)
+        if session:   # the order and ticket talked about, for the agent
+            self.outcome["orderId"] = session.context.get("order", self.outcome["orderId"])
+            self.outcome["ticket"] = session.context.get("ticket", self.outcome["ticket"])
+        ticket = re.search(r"\b(?:CS|TK)\d+", reply.text)
         if reply.intent == "ticket_created" and ticket:
             self.outcome["ticket"] = ticket.group()
         if reply.intent in TOPICS and reply.intent not in self.topics:

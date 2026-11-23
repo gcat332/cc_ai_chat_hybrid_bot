@@ -121,7 +121,8 @@ class GenesysConnector:
         say = reply.speech if reply_format == "speech" else reply.text
         if reply.handoff:
             return 200, _response(say, "COMPLETE", INTENT_HANDOFF,
-                                  {"handoffReason": reply.intent, "verifiedPhone": verified})
+                                  {"handoffReason": reply.intent, "verifiedPhone": verified,
+                                   "orderId": reply.context.get("order"), "ticket": reply.context.get("ticket")})
         if reply.end:
             return 200, _response(say, "COMPLETE", INTENT_END, {"verifiedPhone": verified})
         return 200, _response(say, "MOREDATA", INTENT_CONTINUE,
@@ -134,7 +135,7 @@ class GenesysConnector:
         request  {"sessionId": Session.ConversationId, "text": what the caller said ("" to start),
                   "format": "speech" (default) | "text"}
         response {"reply", "action": "continue" | "handoff" | "end", "handoffReason",
-                  "verifiedPhone", "expectsDigits"}   all strings, flat, for an easy translation map
+                  "verifiedPhone", "expectsDigits", "orderId", "ticket"}   all strings, flat
         Returns (http_status, response_json). Bot errors answer 200 + handoff, so the caller is not dropped.
         """
         session_id = str(body.get("sessionId") or "")[:256]
@@ -147,7 +148,7 @@ class GenesysConnector:
         except Exception:
             log.exception("genesys session=%s: bot error", session_id[:8])
             return 200, {"reply": APOLOGY, "action": "handoff", "handoffReason": "adapter_error",
-                         "verifiedPhone": "", "expectsDigits": "false"}
+                         "verifiedPhone": "", "expectsDigits": "false", "orderId": "", "ticket": ""}
         action = "handoff" if reply.handoff else "end" if reply.end else "continue"
         return 200, {
             "reply": reply.speech if reply_format == "speech" else reply.text,
@@ -155,4 +156,6 @@ class GenesysConnector:
             "handoffReason": reply.intent if reply.handoff else "",
             "verifiedPhone": verified or "",
             "expectsDigits": "true" if reply.expects == "digits" else "false",
+            "orderId": reply.context.get("order", ""),       # set on handoff: what the agent should see
+            "ticket": reply.context.get("ticket", ""),
         }

@@ -5,7 +5,8 @@ A rule-based Thai customer-service assistant, built in the spirit of
 no packages to install. Every answer comes from rules you can read, test and audit.
 
 - **Phase 1 (this): web chat, by typing or by voice.** A chat page and a JSON API.
-  Hold 🎤 to talk (release to send), tap it for hands-free, or press 📞 for a phone-call screen.
+  Hold the mic button to talk (release to send), tap it for hands-free, or press the phone button for a
+  phone-call screen.
 - **Genesys Cloud phone line (voice bot):** callers talk to the bot in Thai on a real phone line
   through Genesys Audio Connector, with Azure for Thai speech. See
   [channels/audio_connector/README.md](channels/audio_connector/README.md).
@@ -52,35 +53,35 @@ visitor. Real customer data and API keys must stay on a server: run
 The chat page uses the browser's own speech features (Web Speech API, `th-TH`). Nothing to
 install, no API key, and it works on GitHub Pages.
 
-- 🎤 **Speak**, two ways:
+- **Speak** (mic button), two ways:
   - **Press and hold** (push-to-talk): talk while holding, release to send. Pauses while holding
     are fine. The bot answers aloud and waits for you.
   - **Tap** (hands-free): talk, and it sends when you pause. After the bot answers aloud it listens
-    again, so a whole conversation runs hands-free. Tap 🎤 again, type, or press a button to stop.
+    again, so a whole conversation runs hands-free. Tap the mic again, type, or press a button to stop.
   - Talking over the bot interrupts it.
-- 📞 **Call mode**: a phone-call screen. Talk back and forth with no buttons, like calling the
+- **Call mode** (phone button): a phone-call screen. Talk back and forth with no buttons, like calling the
   call center:
   - The bot greets you and reads the menu, listens, answers aloud, then listens again.
   - When it asks for a phone, ID or order number, a **keypad** opens. Speak the number or type it
     and press ส่ง (like # on a phone).
-  - **Mute** 🎙️, **keypad** ⌨️ and **hang up** buttons, plus a call timer and live captions. The
+  - **Mute**, **keypad** and **hang up** buttons, plus a call timer and live captions. The
     screen stays on during the call.
   - Silence: "ยังอยู่ในสายไหมคะ", then the bot hangs up politely. Asking for an agent shows the
     transfer. In this demo no real agent system is connected, so the call then ends.
   - The whole call appears in the chat afterwards.
   - If the mic cannot be used, the call continues with the keypad and buttons, and says why.
-- 🔢 **Numbers read the way an agent would:** phone, order and ticket numbers are read digit by
+- **Numbers read the way an agent would:** phone, order and ticket numbers are read digit by
   digit ("ศูนย์ แปด หนึ่ง…"), money as "1250 บาท 50 สตางค์", and times as "8 นาฬิกา". The screen
   shows the text as written. Each reply carries a `speech` version for text-to-speech, which phase
   2 can reuse. Names TTS mispronounces go in `SAY_AS` in `config.py`.
-- 🐢 **Pace:** replies are spoken sentence by sentence with a short pause between, at normal (1.0×) speed
+- **Pace:** replies are spoken sentence by sentence with a short pause between, at normal (1.0×) speed
   by default. Choose ช้า / ปกติ / เร็ว in the header or on the call screen; the choice is
   remembered. The speech text has "." after each sentence and "," between phrases. Numbers are
   read back in groups (ศูนย์ แปด หนึ่ง, สอง สาม สี่, …), which also helps Genesys' text-to-speech.
-- 🔊 **Spoken replies**: turned on automatically when you use the mic. Tap to switch off.
+- **Spoken replies** (speaker button): turned on automatically when you use the mic. Tap to switch off.
 - Numbers said as words ("ศูนย์แปดหนึ่ง…", "หนึ่ง สอง สาม สี่") are understood as digits.
 
-| Browser | Speak (🎤) | Spoken replies (🔊) |
+| Browser | Speak (mic) | Spoken replies (speaker) |
 |---|---|---|
 | Chrome, Edge (desktop and Android) | Yes | Yes |
 | Safari (Mac, iPhone, iPad) | Yes | Yes |
@@ -120,7 +121,7 @@ python -m channels.webchat.server --ai
   `ai_fallback.py`, e.g. to `claude-haiku-5-5`, and test the Thai quality on your own questions.
 - **Not on GitHub Pages:** the API key must stay on a server. The Pages demo is rules-only.
 
-## Data tables (customers, balances, orders, tickets)
+## Data tables (customers, balances, orders, cases, FAQ)
 
 The bot reads and writes real tables in SQLite, which is part of Python, so there is nothing to
 install:
@@ -129,13 +130,26 @@ install:
 |---|---|
 | `customers` | phone, name, last 4 ID-card digits (for the identity check), outstanding balance, due date |
 | `orders` | 6-digit order number, customer phone, status, carrier, tracking number, delivery date |
-| `tickets` | problems reported in the chat: number (TK1001…), verified phone, description, status |
+| `sn_customerservice_case` | cases the bot opened, **shaped like ServiceNow's Case table** (same name and fields: `sys_id`, `number` CS0001001…, `short_description`, `description`, `state`, `priority`, `category`, `contact_type`, `consumer`, `close_notes`, `opened_at`) plus `callback_phone` and `order_id` |
+| `faq` | questions answered from data: topic, keywords customers say, the answer, and what to do after it (answer / offer a ticket / hand over). **The answers are examples: replace them with your real policies.** |
 
 The tables are defined in `callcenter_bot/data/schema.sql`. Demo rows, including the test number
-`0636538939` (ID last 4 digits `8939`), are in `callcenter_bot/data/seed.sql`.
+`0636538939` (ID last 4 digits `8939`), are in `callcenter_bot/data/seed.sql`; the example FAQ
+in `seed_faq.sql`. A database made by an older version gets the new columns and the FAQ on start.
 
-**Admin page `/admin`** (📋 in the chat header): view, search, add, edit and delete rows, and
-update ticket status. Changes are used by the bot straight away. Wrong input is refused with a
+**Mock-data page** (for a POC on your own machine): every table, including the FAQ, on one page.
+
+```bash
+python -m dataadmin          # http://127.0.0.1:8100
+```
+
+Add, edit and delete rows, search, and reset everything to the demo rows. It edits the same
+database as the chat and the Genesys endpoint, so the bot uses a change at once: edit an FAQ
+answer and ask the question again. It listens on 127.0.0.1 only; to open it to others, set
+`ADMIN_PASSWORD` and pass `--host 0.0.0.0`.
+
+**Admin page `/admin`** (the clipboard button in the chat header): view, search, add, edit and delete rows, and
+update case state. Changes are used by the bot straight away. Wrong input is refused with a
 Thai message, e.g. a 9-digit order number.
 
 - **Server:** the database is the file `data/callcenter.db`, created with the demo rows on first
@@ -147,8 +161,35 @@ Thai message, e.g. a 9-digit order number.
 - **GitHub Pages:** the same tables run inside the browser, with no password. Changes are kept
   in that browser only. Other people don't see them, and "รีเซ็ตเป็นข้อมูลตัวอย่าง" restores
   the demo rows. Use the server for real customer data.
-- To use your company's own systems instead, rewrite the four functions in
+- To use your company's own systems instead, rewrite the functions in
   `callcenter_bot/backend.py`.
+
+## Cases in ServiceNow
+
+Requests the bot opens are cases. By default they go to the local table
+`sn_customerservice_case`, which has the same name and fields as ServiceNow Customer Service
+Management's Case table. To use a real instance instead, set on the server:
+
+```bash
+SERVICENOW_INSTANCE=https://yourcompany.service-now.com
+SERVICENOW_USER=...          # integration user: read and create on sn_customerservice_case
+SERVICENOW_PASSWORD=...
+# optional
+SERVICENOW_FIELD_MAP=callback_phone=u_callback_phone,order_id=u_order_number   # your custom fields
+SERVICENOW_SKIP_FIELDS=category        # fields your instance's choice lists don't accept
+```
+
+The bot then opens cases with `POST /api/now/table/sn_customerservice_case` and reads them by
+number with the Table API. If ServiceNow cannot be reached, the customer is handed to an agent
+(`handoffReason=case_error`). Case states and what the bot says for each are in
+`config.CASE_STATES`: the numbers are ServiceNow's usual ones (1 New, 10 Open, 18 Awaiting Info,
+6 Resolved, 3 Closed, 7 Cancelled); check yours under System Definitions > Choice Lists.
+
+Not yet tried against a real instance. `consumer` in ServiceNow is a reference to the consumer
+record; until customers also come from ServiceNow, the verified phone is written into the
+description. See `callcenter_bot/servicenow.py`. A database made by an older version moves its
+`tickets` rows into the case table on start (TK1001 becomes CS0001001); customers can still say
+the old TK numbers.
 
 ## What it handles
 
@@ -157,10 +198,15 @@ Thai message, e.g. a 9-digit order number.
 | Greeting | สวัสดีครับ | Welcome and menu |
 | Outstanding balance | บิลเดือนนี้ต้องจ่ายเท่าไหร่ | Asks for the phone number, verifies with the last 4 ID digits, gives the amount and due date |
 | Payment channels | จ่ายได้ที่ไหนบ้าง | Lists the channels |
-| Order status | ของยังไม่มาเลย | Asks for the order number and gives the status, carrier and expected date |
+| Order status | ของยังไม่มาเลย | Asks for the order number and gives the status, carrier and expected date. Past the expected date, offers a ticket to chase it |
+| Cancel an order | ยกเลิกออเดอร์ | Not shipped yet: offers a cancellation request (ticket). Shipped: explains returns |
+| Change delivery address | เปลี่ยนที่อยู่จัดส่ง | Hands over with the order number (an agent changes it) |
+| Not received / wrong or damaged item | ขึ้นว่าส่งแล้วแต่ยังไม่ได้ของ, ได้ของผิด | Delivered: offers a ticket (check with the carrier / return or exchange) |
 | Report a problem | เน็ตหลุดบ่อยตั้งแต่เมื่อวาน | Confirms the summary and opens a ticket |
-| Opening hours | เปิดกี่โมง | Gives the opening hours |
-| Human agent | ขอคุยกับเจ้าหน้าที่ | Hands off at any point (`handoff: true`) |
+| Case status | เรื่อง CS0001001 ถึงไหนแล้ว, ซีเอส 1001 | State and date of the case (no details without verification); Awaiting Info: offers the agent at once; open: offers an agent to speed it up |
+| FAQ (from the `faq` table) | จ่ายแล้วแต่ยอดยังไม่ลด, ผ่อนได้ไหม, ขอใบเสร็จ, ลืมเลขบัตร | The stored answer, then nothing / a ticket offer / a handoff |
+| Opening hours | เปิดกี่โมง | Gives the opening hours and whether agents are working now |
+| Human agent | ขอคุยกับเจ้าหน้าที่ | Hands off at any point (`handoff: true`), with the order and ticket talked about. Outside `AGENT_HOURS`, offers a call back instead |
 | Thanks / goodbye | ขอบคุณครับ, บายบาย | Polite close and session ends |
 
 It also handles:
@@ -169,6 +215,12 @@ It also handles:
 - **Moving around:** "ยกเลิก" leaves the current step, and the customer can change topic mid-step.
 - **Not understood:** after 2 misunderstood lines the bot offers a human agent. After 3 failed ID
   checks it hands off for account safety.
+- **Proactive:** after the balance it asks aloud whether the customer wants the payment channels
+  (so it works on the phone too) and says when the due date has passed; after a ticket it says how
+  to follow it up ("เช็คเรื่อง CS0001001").
+- **Tickets need a way back:** a customer who did not verify is asked for a number to call back.
+- **Never changes an order itself:** cancellations, address changes and returns become a ticket or
+  a handoff for a person.
 
 ## Layout
 

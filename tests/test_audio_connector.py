@@ -19,7 +19,10 @@ try:
 except ImportError:   # the voice extra is optional
     connect = None
 
-from callcenter_bot import Bot, db
+from callcenter_bot import Bot, config, db
+
+# Agent hours are tested in test_bot.ProactiveTest; here a handoff must work at any time of day.
+config.AGENT_HOURS = None
 
 KEY = "test-key"
 FAST = dict(silence_seconds=60, dtmf_seconds=0.3, frames_per_second=500, playback_wait_seconds=2)
@@ -155,11 +158,13 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await g.say("อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้าครับ")
         await g.hear()
         await g.say("ใช่ครับ")
-        self.assertIn("ที เค, หนึ่ง ศูนย์ ศูนย์ หนึ่ง", await g.hear())   # ticket number read digit by digit
+        self.assertIn("ติดต่อกลับ", await g.hear())                 # not verified: number to call back
+        await g.press("0899999999#")
+        self.assertIn("ซี เอส, ศูนย์ ศูนย์ ศูนย์, หนึ่ง ศูนย์ ศูนย์, หนึ่ง", await g.hear())   # case number, digit by digit
         await g.say("บายบาย")
         await g.hear()
         v = (await g.message("disconnect"))["parameters"]["outputVariables"]
-        self.assertEqual((v["intent"], v["ticket"], v["topics"]), ("end-conversation", "TK1001", "report_problem,ticket_created"))
+        self.assertEqual((v["intent"], v["ticket"], v["topics"]), ("end-conversation", "CS0001001", "report_problem,ticket_created"))
 
     async def test_silence_asks_then_hangs_up(self):
         await self.start(silence_seconds=0.6)

@@ -25,6 +25,27 @@ KEYWORDS = {
         "ติดตามสินค้า", "ติดตามการจัดส่ง", "เลขพัสดุ", "จัดส่ง", "ส่งของ", "สินค้าถึง",
         "order", "tracking", "delivery",
     ],
+    # What the customer wants done with an order: each asks for the order number, then acts.
+    "order_cancel": [
+        "ยกเลิกคำสั่งซื้อ", "ยกเลิกออเดอร์", "ยกเลิกออร์เดอร์", "ยกเลิกการสั่งซื้อ", "ไม่เอาของแล้ว",
+        "cancel order",
+    ],
+    "order_change_address": [
+        "เปลี่ยนที่อยู่จัดส่ง", "แก้ที่อยู่จัดส่ง", "ที่อยู่จัดส่ง", "เปลี่ยนที่ส่ง", "ส่งผิดที่อยู่",
+    ],
+    "order_late": ["ส่งช้า", "ของช้า", "ทำไมยังไม่มา", "ทำไมยังไม่ได้", "เลยกำหนดส่ง", "ล่าช้า"],
+    "order_not_received": [
+        "ยังไม่ได้รับของ", "ไม่ได้รับของ", "ไม่ได้รับสินค้า", "ยังไม่ได้ของ", "ส่งแล้วแต่",
+        "ขึ้นว่าส่งแล้ว", "ขึ้นว่าจัดส่งสำเร็จ", "ของหาย", "พัสดุหาย",
+    ],
+    "order_return": [
+        "ได้ของผิด", "ส่งของผิด", "ของผิด", "สินค้าผิด", "ของเสียหาย", "สินค้าเสียหาย", "ของแตก",
+        "ของพัง", "สินค้าชำรุด", "คืนสินค้า", "คืนของ", "เปลี่ยนสินค้า", "เปลี่ยนของ", "ขอคืน",
+    ],
+    "ticket_status": [
+        "เช็คเรื่อง", "เช็กเรื่อง", "ติดตามเรื่อง", "ตามเรื่อง", "สถานะเรื่อง", "เรื่องที่แจ้ง",
+        "เรื่องถึงไหน", "เลขที่เรื่อง", "เร่งเรื่อง",
+    ],
     "report_problem": [
         "แจ้งปัญหา", "มีปัญหา", "ใช้งานไม่ได้", "ใช้ไม่ได้", "ไม่ทำงาน", "ขัดข้อง", "เสีย",
         "เน็ตหลุด", "เน็ตช้า", "เน็ตใช้ไม่ได้", "ร้องเรียน", "ไม่พอใจ", "แจ้งซ่อม",
@@ -36,7 +57,7 @@ KEYWORDS = {
     ],
     "hours": [
         "เวลาทำการ", "เวลาเปิด", "เปิดกี่โมง", "ปิดกี่โมง", "เปิดวันไหน", "เปิดทุกวัน",
-        "วันหยุด", "opening hours", "office hours",
+        "วันหยุด", "มีเจ้าหน้าที่ไหม", "เจ้าหน้าที่อยู่ไหม", "opening hours", "office hours",
     ],
     "thanks": ["ขอบคุณ", "ขอบใจ", "แต๊งกิ้ว", "thank", "thanks", "thx"],
     "goodbye": [
@@ -61,12 +82,17 @@ def _matches(keyword: str, text: str, compact_text: str) -> bool:
     return keyword in compact_text
 
 
+def keyword_score(keywords, message: str) -> int:
+    """How strongly `message` matches `keywords`: the length of every keyword found, added up."""
+    text, compact_text = normalize(message), compact(message)
+    return sum(len(k) for k in keywords if _matches(k, text, compact_text))
+
+
 def detect(message: str):
     """Return (intent, score) for the best matching topic, or (None, 0)."""
-    text, compact_text = normalize(message), compact(message)
     best, best_score = None, 0
     for intent, keywords in KEYWORDS.items():
-        score = sum(len(k) for k in keywords if _matches(k, text, compact_text))
+        score = keyword_score(keywords, message)
         if score > best_score:
             best, best_score = intent, score
     return best, best_score

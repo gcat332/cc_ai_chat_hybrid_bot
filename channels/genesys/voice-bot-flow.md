@@ -78,9 +78,10 @@ curl -s https://xxxx-xxxx.trycloudflare.com/api/genesys/turn \
 |---|---|
 | `reply` | ประโยคที่ให้ Genesys พูด |
 | `action` | `continue`, `handoff`, `end` |
-| `handoffReason` | `agent`, `verify_failed`, `adapter_error` หรือว่าง |
+| `handoffReason` | `agent`, `verify_failed`, `adapter_error`, `order_change_address` หรือรหัสหัวข้อ FAQ ที่โอน (`payment_arrangement`, `bill_detail`, `forgot_id`, `update_contact`, `cancel_service`) หรือว่าง |
 | `verifiedPhone` | เบอร์ที่ยืนยันตัวตนผ่านแล้ว หรือว่าง |
 | `expectsDigits` | `true` ระหว่างรอเบอร์โทร เลขบัตร หรือเลขคำสั่งซื้อ |
+| `orderId`, `ticket` | ตอนโอน: เลขคำสั่งซื้อและเลขเรื่องที่คุยกันในสาย ให้เจ้าหน้าที่เห็น (ไม่บังคับ: เพิ่มใน output contract ถ้าต้องการใช้) |
 
 บอทขัดข้องจะตอบ 200 + `action=handoff` เสมอ ผู้โทรจะไม่หลุดสาย อย่าเปิด `--ai` ตอนใช้กับ Data Action
 เพราะคำตอบจาก AI อาจช้ากว่าที่ Data Action รอ
@@ -125,7 +126,9 @@ Admin → Integrations → **Actions** → **Add Action** → เลือก in
     "action": {"type": "string"},
     "handoffReason": {"type": "string"},
     "verifiedPhone": {"type": "string"},
-    "expectsDigits": {"type": "string"}
+    "expectsDigits": {"type": "string"},
+    "orderId": {"type": "string"},
+    "ticket": {"type": "string"}
   }
 }
 ```

@@ -6,7 +6,10 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-from callcenter_bot import Bot, db
+from callcenter_bot import Bot, config, db
+
+# Agent hours are tested in test_bot.ProactiveTest; here a handoff must work at any time of day.
+config.AGENT_HOURS = None
 from channels.genesys.connector import GenesysConnector
 
 
@@ -127,6 +130,11 @@ class DataActionTest(unittest.TestCase):
         self.assertEqual((out["action"], out["handoffReason"], out["verifiedPhone"]),
                          ("handoff", "agent", "0636538939"))
         self.assertNotIn("genesys:conv-1", self.c.bot.sessions)   # handoff ends the bot session
+
+    def test_handoff_tells_the_agent_which_order(self):
+        self.say("ติดตามพัสดุ 636538")
+        out = self.say("ขอคุยกับเจ้าหน้าที่")
+        self.assertEqual((out["action"], out["orderId"], out["ticket"]), ("handoff", "636538", ""))
 
     def test_goodbye_ends(self):
         self.say("")
