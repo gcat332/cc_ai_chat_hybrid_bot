@@ -233,8 +233,10 @@ function voicesReady() {   // voices load after the page: wait for them (at most
 }
 
 const canSayThai = () => canSpeak && voiceState !== "none";
+const IS_EDGE = /Edg\//.test(navigator.userAgent);
 const NO_THAI_VOICE = "เครื่องนี้ไม่มีเสียงอ่านภาษาไทย บอทจึงตอบเป็นข้อความอย่างเดียว (ไม่ใช้เสียงภาษาอังกฤษอ่านแทน) " +
-  "วิธีเพิ่มเสียงไทย: Windows: Settings > Time & language > Language & region > เพิ่มภาษาไทย แล้วเลือก Text-to-speech · " +
+  (IS_EDGE ? "" : "ทางที่ง่ายที่สุด: เปิดหน้านี้ด้วย Microsoft Edge ซึ่งมีเสียงไทย (Premwadee, Niwat) มาในตัว · ") +
+  "หรือเพิ่มเสียงไทยในเครื่อง: Windows: Settings > Time & language > Language & region > เพิ่มภาษาไทย แล้วเลือก Text-to-speech · " +
   "Android: ติดตั้ง Speech Services by Google แล้วเพิ่มภาษาไทย · iPhone/Mac: มีเสียงไทยอยู่แล้ว เลือกได้ในการตั้งค่า > การช่วยการเข้าถึง > เนื้อหาที่อ่านออกเสียง";
 
 function warnNoThaiVoice() {
