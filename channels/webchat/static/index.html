@@ -203,14 +203,57 @@ const MIC_ERRORS = {
   "language-not-supported": "เบราว์เซอร์นี้ไม่รองรับการฟังภาษาไทย ลองใช้ Chrome, Edge หรือ Safari",
   "bad-grammar": "เบราว์เซอร์นี้ฟังเสียงไม่สำเร็จ ลองใช้ Chrome, Edge หรือ Safari",
 };
-let thaiVoice = null, warnedNoVoice = false;
+// Never let a non-Thai voice read Thai text: the browser's default is usually English, which
+// reads Thai as English-sounding noise. voiceState: "thai" (a Thai voice is installed),
+// "none" (voices are listed, none Thai: show text only), "unknown" (the browser lists no voices,
+// as some Android phones do; the phone's own Thai engine may still speak, so try).
+let thaiVoice = null, voiceState = "unknown", warnedNoVoice = false;
+const isThai = v => v.lang.replace("_", "-").toLowerCase().startsWith("th");
 
 function pickThaiVoice() {
-  thaiVoice = speechSynthesis.getVoices()
-    .find(v => v.lang.replace("_", "-").toLowerCase().startsWith("th")) || null;
+  const voices = speechSynthesis.getVoices();
+  const thai = voices.filter(isThai);
+  // Prefer the natural-sounding voices when there are several.
+  thaiVoice = thai.find(v => /premwadee|niwat|achara|natural|neural|google/i.test(v.name)) || thai[0] || null;
+  voiceState = thaiVoice ? "thai" : voices.length ? "none" : "unknown";
 }
-if (canSpeak) { pickThaiVoice(); speechSynthesis.onvoiceschanged = pickThaiVoice; }
-else speakBtn.hidden = true;
+
+function onVoicesChanged(fn, once = false) {   // older browsers only have onvoiceschanged
+  if (speechSynthesis.addEventListener) return speechSynthesis.addEventListener("voiceschanged", fn, { once });
+  const previous = speechSynthesis.onvoiceschanged;
+  speechSynthesis.onvoiceschanged = e => { if (previous) previous(e); fn(e); };
+}
+
+function voicesReady() {   // voices load after the page: wait for them (at most 1.5 s)
+  return new Promise(resolve => {
+    if (!canSpeak || speechSynthesis.getVoices().length) return resolve();
+    const timer = setTimeout(resolve, 1500);
+    onVoicesChanged(() => { clearTimeout(timer); resolve(); }, true);
+  });
+}
+
+const canSayThai = () => canSpeak && voiceState !== "none";
+const NO_THAI_VOICE = "เครื่องนี้ไม่มีเสียงอ่านภาษาไทย บอทจึงตอบเป็นข้อความอย่างเดียว (ไม่ใช้เสียงภาษาอังกฤษอ่านแทน) " +
+  "วิธีเพิ่มเสียงไทย: Windows: Settings > Time & language > Language & region > เพิ่มภาษาไทย แล้วเลือก Text-to-speech · " +
+  "Android: ติดตั้ง Speech Services by Google แล้วเพิ่มภาษาไทย · iPhone/Mac: มีเสียงไทยอยู่แล้ว เลือกได้ในการตั้งค่า > การช่วยการเข้าถึง > เนื้อหาที่อ่านออกเสียง";
+
+function warnNoThaiVoice() {
+  if (warnedNoVoice) return;
+  warnedNoVoice = true;
+  note(NO_THAI_VOICE);
+}
+
+function thaiUtterance(text) {
+  const u = new SpeechSynthesisUtterance(text.replace(/\s*\n\s*/g, " "));
+  u.lang = "th-TH";
+  if (thaiVoice) u.voice = thaiVoice;
+  return u;
+}
+
+if (canSpeak) {
+  pickThaiVoice();
+  onVoicesChanged(pickThaiVoice);
+} else speakBtn.hidden = true;
 
 function setSpeak(on) {
   speakOn = on && canSpeak;
@@ -218,19 +261,19 @@ function setSpeak(on) {
   speakBtn.setAttribute("aria-pressed", speakOn);
   speakBtn.title = speakOn ? "ปิดเสียงตอบกลับ" : "เปิดเสียงตอบกลับ";
   if (!speakOn && canSpeak) speechSynthesis.cancel();
-  if (speakOn && !thaiVoice && !warnedNoVoice) {
-    warnedNoVoice = true;
-    note("อุปกรณ์นี้อาจไม่มีเสียงอ่านภาษาไทย ถ้าไม่ได้ยินเสียง ให้ติดตั้งเสียงภาษาไทยในการตั้งค่าเครื่อง");
-  }
+  if (speakOn && voiceState === "none") warnNoThaiVoice();
 }
 speakBtn.onclick = () => setSpeak(!speakOn);
 
 function speak(reply) {
   if (!speakOn) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance((reply.speech || reply.text).replace(/\s*\n\s*/g, " "));
-  u.lang = "th-TH";
-  if (thaiVoice) u.voice = thaiVoice;
+  if (!canSayThai()) {   // no Thai voice: text only, then carry on listening in hands-free mode
+    warnNoThaiVoice();
+    if (voiceTurn && handsFree && !reply.end && !reply.handoff && Recognition) setTimeout(listen, 600);
+    return;
+  }
+  const u = thaiUtterance(reply.speech || reply.text);
   // Hands-free: after the bot finishes speaking, listen again, like a phone call.
   u.onend = () => { if (voiceTurn && handsFree && !reply.end && !reply.handoff && Recognition) listen(); };
   speechSynthesis.speak(u);
@@ -355,9 +398,12 @@ function say(line) {
     speechSynthesis.cancel();
     callCaption.textContent = line.text;
     const text = line.speech || line.text;
-    const u = new SpeechSynthesisUtterance(text.replace(/\s*\n\s*/g, " "));
-    u.lang = "th-TH";
-    if (thaiVoice) u.voice = thaiVoice;
+    if (!canSayThai()) {   // no Thai voice: show the line and give time to read it
+      callStatus("อ่านคำตอบบนจอ (เครื่องนี้ไม่มีเสียงไทย)", "speaking");
+      setTimeout(resolve, Math.min(8000, 1500 + line.text.length * 60));
+      return;
+    }
+    const u = thaiUtterance(text);
     let timer;
     const done = () => { clearTimeout(timer); resolve(); };
     u.onend = done; u.onerror = done;
@@ -518,7 +564,9 @@ async function startCall() {
   sessionStorage.setItem("chat_session", sessionId);
   quick.innerHTML = "";
   note("📞 เริ่มการโทร");
-  if (IN_APP) callErrorEl.textContent = "แอปนี้อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้เปิดในเบราว์เซอร์";
+  await voicesReady(); pickThaiVoice();
+  if (voiceState === "none") { callErrorEl.textContent = NO_THAI_VOICE; warnNoThaiVoice(); }
+  else if (IN_APP) callErrorEl.textContent = "แอปนี้อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้เปิดในเบราว์เซอร์";
   try { await runCall(); }
   catch { note("การโทรขัดข้อง กรุณาลองใหม่"); hangUp(); }
 }
@@ -557,6 +605,7 @@ async function init() {
   input.disabled = true;
   note("กำลังโหลดผู้ช่วย… (ครั้งแรกอาจใช้เวลาสักครู่)");
   runtime = await startRuntime();
+  await voicesReady(); if (canSpeak) pickThaiVoice();
   log.lastChild.remove();  // the loading note
   if (runtime.mode === "browser") {
     note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลเก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ดู/แก้ได้ที่ 📋 ข้อมูล)");

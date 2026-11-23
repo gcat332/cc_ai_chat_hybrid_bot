@@ -15,6 +15,9 @@ Admin page for the tables (customers, orders, tickets): /admin
     POST /api/admin/save    {"table", "row", "old_key"}       -> {"ok": true} or {"error": "..."}
     POST /api/admin/delete  {"table", "key"}                  -> {"ok": true}
 
+Genesys Cloud Bot Connector (see channels/genesys/README.md):
+    POST /api/genesys/botconnector  needs GENESYS_SECRET (sent by Genesys as a header)
+
 The tables are in data/callcenter.db (set CALLCENTER_DB to move it), created with demo rows
 the first time.
 
@@ -32,6 +35,7 @@ from pathlib import Path
 
 from callcenter_bot import Bot, admin, db
 from callcenter_bot.privacy import mask_digits
+from channels.genesys.connector import GenesysConnector
 
 STATIC = Path(__file__).parent / "static"
 PAGES = {"/": "index.html", "/index.html": "index.html", "/admin": "admin.html",
@@ -40,6 +44,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 MAX_MESSAGE_CHARS = 1000
 log = logging.getLogger("webchat")
 bot = Bot()
+genesys = GenesysConnector(bot)
 
 
 def admin_password():
@@ -69,6 +74,14 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid JSON"})
+
+        if self.path == "/api/genesys/botconnector":
+            if not genesys.enabled:
+                return self._json(503, {"error": "Genesys connector is off: set GENESYS_SECRET"})
+            if not genesys.authorized(self.headers):
+                return self._json(403, {"error": "Forbidden"})
+            status, result = genesys.handle(body)
+            return self._json(status, result)
 
         if self.path.startswith("/api/admin/"):
             if not self._admin_ok():
@@ -143,16 +156,20 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     db.use_database(db.DEFAULT_PATH)
     print(f"Database: {db.DEFAULT_PATH}")
-    global bot
+    global bot, genesys
     if args.ai:
         from callcenter_bot.ai_fallback import MODEL, make_claude_fallback
         bot = Bot(fallback=make_claude_fallback())
+        genesys = GenesysConnector(bot)
         print(f"AI answers on ({MODEL}) for questions the rules don't cover")
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
             print("Warning: ANTHROPIC_API_KEY is not set. Unless you signed in with `ant auth login`, "
                   "AI answers will fail and the bot will use its rules-only replies.")
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Web chat on http://{args.host}:{args.port}  (Ctrl+C to stop)")
+    if genesys.enabled:
+        print(f"Genesys Bot Connector on http://{args.host}:{args.port}/api/genesys/botconnector "
+              f"(secret header: {genesys.secret_header})")
     if admin_password():
         print(f"Admin page on http://{args.host}:{args.port}/admin  (user: admin)")
     else:

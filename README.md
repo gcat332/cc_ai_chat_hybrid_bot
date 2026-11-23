@@ -6,6 +6,8 @@ no packages to install. Every answer comes from rules you can read, test and aud
 
 - **Phase 1 (this): web chat, by typing or by voice.** A chat page and a JSON API.
   Hold 🎤 to talk (release to send), tap it for hands-free, or press 📞 for a phone-call screen.
+- **Genesys Cloud:** the same bot behind Genesys through Bot Connector. Genesys handles calls,
+  speech and agents. See [channels/genesys/README.md](channels/genesys/README.md).
 - **Phase 2: phone line.** The same bot core behind telephony, speech-to-text and text-to-speech.
   See [channels/voice/README.md](channels/voice/README.md).
 
@@ -79,7 +81,8 @@ install, no API key, and it works on GitHub Pages.
 
 Notes:
 - The microphone needs HTTPS or `localhost`. GitHub Pages is HTTPS.
-- Spoken replies need a Thai voice on the device. Most phones have one. On Windows, add the Thai
+- Spoken replies need a Thai voice on the device. The bot never lets an English voice read Thai.
+  Without a Thai voice it answers in text only and says how to add one. Most phones have one. On Windows, add the Thai
   language pack if the bot is silent.
 - **Privacy (PDPA):** in Chrome and Edge, speech is sent to Google's or Microsoft's servers to be
   recognised. Say so in your privacy notice. If voice must stay within your own systems, use a
@@ -172,6 +175,7 @@ It also handles:
 | `callcenter_bot/db.py`, `data/*.sql` | The tables, demo rows, and checks for admin edits |
 | `callcenter_bot/backend.py` | What the bot asks of the tables. Rewrite to use your real systems. |
 | `channels/webchat/` | Web server (`server.py`), chat page (`static/index.html`), admin page (`static/admin.html`), and `static/runtime.js`, which runs the bot on the server or in the browser |
+| `channels/genesys/` | Genesys Cloud Bot Connector (`connector.py`), bot registration (`bots.json`), setup guide |
 | `channels/voice/` | Phase 2 plan |
 | `tests/` | Unit and conversation tests |
 

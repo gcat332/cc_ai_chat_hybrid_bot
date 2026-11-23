@@ -1,0 +1,35 @@
+{
+  "chatBots": [
+    {
+      "id": "d150eb60-f36e-4f4c-850d-9eb679cb5258",
+      "name": "Thai Call Center Bot",
+      "versions": [
+        {
+          "version": "1",
+          "supportedLanguages": ["th-th"],
+          "intents": [
+            {
+              "name": "continue",
+              "slots": {
+                "expectsDigits": { "name": "expectsDigits", "type": "String" }
+              }
+            },
+            {
+              "name": "live-agent-handoff",
+              "slots": {
+                "handoffReason": { "name": "handoffReason", "type": "String" },
+                "verifiedPhone": { "name": "verifiedPhone", "type": "String" }
+              }
+            },
+            {
+              "name": "end-conversation",
+              "slots": {
+                "verifiedPhone": { "name": "verifiedPhone", "type": "String" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
