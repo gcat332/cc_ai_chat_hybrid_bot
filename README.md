@@ -5,7 +5,7 @@ A rule-based Thai customer-service assistant, built in the spirit of
 no packages to install. Every answer comes from rules you can read, test and audit.
 
 - **Phase 1 (this): web chat, by typing or by voice.** A chat page and a JSON API.
-  Press 🎤 and speak Thai. The bot answers aloud and listens again, hands-free.
+  Hold 🎤 to talk (release to send), or tap it for hands-free. The bot answers aloud.
 - **Phase 2: phone line.** The same bot core behind telephony, speech-to-text and text-to-speech.
   See [channels/voice/README.md](channels/voice/README.md).
 
@@ -47,9 +47,12 @@ visitor. Real customer data and API keys must stay on a server: run
 The chat page uses the browser's own speech features (Web Speech API, `th-TH`). Nothing to
 install, no API key, and it works on GitHub Pages.
 
-- 🎤 **Speak**: tap once and talk. The words appear as you speak, and are sent when you stop.
-  After the bot answers aloud it listens again, so a whole conversation runs hands-free. Tap 🎤
-  again, type, or press a button to stop. Talking over the bot interrupts it.
+- 🎤 **Speak**, two ways:
+  - **Press and hold** (push-to-talk): talk while holding, release to send. Pauses while holding
+    are fine. The bot answers aloud and waits for you.
+  - **Tap** (hands-free): talk, and it sends when you pause. After the bot answers aloud it listens
+    again, so a whole conversation runs hands-free. Tap 🎤 again, type, or press a button to stop.
+  - Talking over the bot interrupts it.
 - 🔊 **Spoken replies**: turned on automatically when you use the mic. Tap to switch off.
 - Numbers said as words ("ศูนย์แปดหนึ่ง…", "หนึ่ง สอง สาม สี่") are understood as digits.
 
