@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ข้อมูลศูนย์บริการ</title>
+<style>
+  :root { --brand: #0b6e4f; --bg: #f4f6f5; --line: #e1e6e3; --muted: #666; --danger: #c5221f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Sarabun", "Noto Sans Thai", "Loma", "Tahoma", sans-serif;
+         background: var(--bg); color: #1d2b25; font-size: 15px; }
+  header { background: var(--brand); color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; font-weight: 600; }
+  header a { color: #fff; text-decoration: none; opacity: .9; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  #banner { background: #fff8e1; border: 1px solid #f3df9c; border-radius: 8px; padding: 8px 12px;
+            margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+  #banner[hidden] { display: none; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 4px; background: #e3e9e6; padding: 4px; border-radius: 10px; }
+  .tabs button { border: 0; background: transparent; padding: 7px 14px; border-radius: 8px; font: inherit; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: #fff; color: var(--brand); font-weight: 600;
+                                       box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  #search { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid #ccd5d0; border-radius: 8px; font: inherit; }
+  .btn { border: 1px solid var(--brand); background: var(--brand); color: #fff; padding: 8px 14px;
+         border-radius: 8px; font: inherit; cursor: pointer; }
+  .btn.ghost { background: #fff; color: var(--brand); }
+  .btn.danger { background: #fff; color: var(--danger); border-color: #e7b4b2; }
+  .btn.small { padding: 4px 10px; font-size: 13px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; background: #fafcfb; }
+  td.wrap { white-space: normal; min-width: 220px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.actions { text-align: right; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 13px; background: #eef3f0; }
+  .pill.due { background: #fdecea; color: var(--danger); }
+  .pill.done { background: #e6f4ea; color: #137333; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  dialog { border: 0; border-radius: 12px; padding: 0; width: min(440px, 94vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  dialog form { padding: 18px 20px; display: grid; gap: 12px; }
+  dialog h2 { margin: 0; font-size: 17px; }
+  label { display: grid; gap: 4px; font-size: 14px; color: #33433b; }
+  label input, label select, label textarea { padding: 8px 10px; border: 1px solid #ccd5d0; border-radius: 8px;
+                                               font: inherit; font-size: 15px; }
+  label small { color: var(--muted); }
+  #formError { color: var(--danger); font-size: 14px; min-height: 18px; }
+  .row-end { display: flex; justify-content: flex-end; gap: 8px; }
+  #status { color: var(--muted); font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 ข้อมูลศูนย์บริการ</h1>
+  <a href="index.html">← กลับไปหน้าแชท</a>
+</header>
+<main>
+  <div id="banner" hidden></div>
+  <div class="bar">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <input id="search" type="search" placeholder="ค้นหา เช่น เบอร์ ชื่อ เลขคำสั่งซื้อ" aria-label="ค้นหา">
+    <button class="btn ghost" id="refresh" type="button" title="โหลดข้อมูลใหม่">🔄</button>
+    <button class="btn" id="addBtn" type="button">＋ เพิ่ม</button>
+  </div>
+  <div class="card"><table id="grid"></table></div>
+  <div id="status">กำลังโหลด…</div>
+</main>
+
+<dialog id="dialog">
+  <form method="dialog" id="form" novalidate>
+    <h2 id="formTitle"></h2>
+    <div id="fields" style="display:grid; gap:12px"></div>
+    <div id="formError" role="alert"></div>
+    <div class="row-end">
+      <button class="btn ghost" type="button" id="cancel">ยกเลิก</button>
+      <button class="btn" type="submit">บันทึก</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="runtime.js"></script>
+<script>
+const MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+const thaiDate = iso => {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return `${d} ${MONTHS[m - 1]} ${y + 543}` + (iso.length > 10 ? " " + iso.slice(11, 16) : "");
+};
+const money = v => Number(v || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const phoneFmt = p => !p ? "" : p.length === 10 ? `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}` : p;
+const TICKET_STATUSES = ["รอดำเนินการ", "กำลังดำเนินการ", "เสร็จสิ้น"];
+const ORDER_STATUSES = ["รอชำระเงิน", "กำลังเตรียมสินค้า", "กำลังจัดส่ง", "จัดส่งสำเร็จแล้ว", "ยกเลิกแล้ว"];
+
+// What each table shows and lets you edit. `show` formats a cell; `edit: false` is read-only.
+const TABLES = {
+  customers: {
+    title: "ลูกค้า", key: "phone", canAdd: true,
+    cols: [
+      { f: "phone", label: "เบอร์โทร", show: phoneFmt, input: { type: "tel", inputmode: "numeric", placeholder: "0812345678" } },
+      { f: "name", label: "ชื่อ" },
+      { f: "id_last4", label: "เลขบัตร 4 ตัวท้าย", input: { inputmode: "numeric", maxlength: 4 },
+        hint: "ใช้ยืนยันตัวตนตอนเช็คยอด" },
+      { f: "balance", label: "ยอดค้างชำระ (บาท)", num: true, show: money,
+        input: { type: "number", step: "0.01", min: "0" } },
+      { f: "due_date", label: "ครบกำหนดชำระ", input: { type: "date" },
+        show: (v, r) => v ? `<span class="pill ${r.balance > 0 ? "due" : ""}">${thaiDate(v)}</span>` : "–", html: true },
+    ],
+  },
+  orders: {
+    title: "คำสั่งซื้อ", key: "order_id", canAdd: true,
+    cols: [
+      { f: "order_id", label: "เลขคำสั่งซื้อ", input: { inputmode: "numeric", maxlength: 6, placeholder: "123456" } },
+      { f: "phone", label: "เบอร์ลูกค้า", show: phoneFmt, input: { type: "tel", inputmode: "numeric" },
+        hint: "ต้องมีในตารางลูกค้า (เว้นว่างได้)" },
+      { f: "status", label: "สถานะ", options: ORDER_STATUSES, free: true,
+        show: v => `<span class="pill ${v.startsWith("จัดส่งสำเร็จ") ? "done" : ""}">${esc(v)}</span>`, html: true },
+      { f: "carrier", label: "ขนส่ง" },
+      { f: "tracking", label: "เลขพัสดุ" },
+      { f: "eta", label: "วันที่ได้รับ / คาดว่าจะได้รับ", input: { type: "date" }, show: thaiDate },
+    ],
+  },
+  tickets: {
+    title: "เรื่องที่แจ้ง", key: "id", canAdd: false,
+    cols: [
+      { f: "ticket_no", label: "เลขเรื่อง", edit: false },
+      { f: "created_at", label: "วันที่แจ้ง", edit: false, show: thaiDate },
+      { f: "phone", label: "เบอร์ (ยืนยันตัวตนแล้ว)", edit: false, show: v => phoneFmt(v) || "–" },
+      { f: "description", label: "รายละเอียด", edit: false, wrap: true },
+      { f: "status", label: "สถานะ", options: TICKET_STATUSES,
+        show: v => `<span class="pill ${v === "เสร็จสิ้น" ? "done" : v === "รอดำเนินการ" ? "due" : ""}">${esc(v)}</span>`, html: true },
+    ],
+  },
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let runtime, data = {}, current = "customers", editing = null;
+
+function renderTabs() {
+  $("tabs").innerHTML = "";
+  for (const [name, t] of Object.entries(TABLES)) {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", name === current);
+    b.textContent = `${t.title} (${(data[name] || []).length})`;
+    b.onclick = () => { current = name; render(); };
+    $("tabs").appendChild(b);
+  }
+  $("addBtn").hidden = !TABLES[current].canAdd;
+}
+
+function render() {
+  renderTabs();
+  const t = TABLES[current], q = $("search").value.trim().toLowerCase().replace(/-/g, "");
+  const rows = (data[current] || []).filter(r => !q || Object.values(r).some(v => String(v ?? "").toLowerCase().includes(q)));
+  const head = `<tr>${t.cols.map(c => `<th>${c.label}</th>`).join("")}<th></th></tr>`;
+  const body = rows.map(r => `<tr>${t.cols.map(c => {
+      const v = r[c.f];
+      const cell = c.show ? c.show(v ?? "", r) : esc(v ?? "");
+      return `<td class="${c.num ? "num" : ""} ${c.wrap ? "wrap" : ""}">${c.html || !c.show ? cell : esc(cell)}</td>`;
+    }).join("")}
+    <td class="actions"><button class="btn ghost small" data-edit="${esc(r[t.key])}">แก้ไข</button>
+      <button class="btn danger small" data-del="${esc(r[t.key])}">ลบ</button></td></tr>`).join("");
+  $("grid").innerHTML = head + (body || `<tr><td class="empty" colspan="${t.cols.length + 1}">${q ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูล"}</td></tr>`);
+  $("grid").querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openForm(findRow(b.dataset.edit)));
+  $("grid").querySelectorAll("[data-del]").forEach(b => b.onclick = () => removeRow(findRow(b.dataset.del)));
+}
+
+const findRow = key => data[current].find(r => String(r[TABLES[current].key]) === key);
+
+function openForm(row) {
+  const t = TABLES[current];
+  editing = row || null;
+  $("formTitle").textContent = (row ? "แก้ไข" : "เพิ่ม") + t.title;
+  $("formError").textContent = "";
+  $("fields").innerHTML = "";
+  for (const c of t.cols) {
+    const label = document.createElement("label");
+    label.append(c.label);
+    let el;
+    if (c.options && !c.free) {
+      el = document.createElement("select");
+      for (const o of c.options) el.add(new Option(o, o));
+    } else {
+      el = document.createElement("input");
+      for (const [k, v] of Object.entries(c.input || {})) el.setAttribute(k, v);
+      if (c.options) {          // suggestions, but any text is allowed
+        const list = document.createElement("datalist");
+        list.id = "list-" + c.f;
+        for (const o of c.options) list.append(new Option(o));
+        label.append(list);
+        el.setAttribute("list", list.id);
+      }
+    }
+    el.name = c.f;
+    el.value = row ? (row[c.f] ?? "") : (c.options && !c.free ? c.options[0] : "");
+    if (c.f === "status" && !row && c.options) el.value = c.options[0];
+    if (c.edit === false) { el.disabled = true; if (c.show && el.tagName === "INPUT") el.value = c.html ? row[c.f] : c.show(row[c.f] ?? "", row); }
+    label.append(el);
+    if (c.hint) { const s = document.createElement("small"); s.textContent = c.hint; label.append(s); }
+    $("fields").append(label);
+  }
+  $("dialog").showModal();
+  $("fields").querySelector("input:not([disabled]), select:not([disabled])")?.focus();
+}
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const t = TABLES[current], row = {};
+  for (const el of $("fields").querySelectorAll("input, select")) if (el.name) row[el.name] = el.value;
+  if (current === "tickets") row.id = editing.id;
+  try {
+    await runtime.save(current, row, editing ? editing[t.key] : null);
+    $("dialog").close();
+    await load(`บันทึก${t.title}แล้ว`);
+  } catch (err) {
+    $("formError").textContent = err.message;   // e.g. "เบอร์โทรต้องเป็นตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0"
+  }
+};
+$("cancel").onclick = () => $("dialog").close();
+
+async function removeRow(row) {
+  const t = TABLES[current], name = row.name || row.ticket_no || row[t.key];
+  if (!confirm(`ลบ${t.title} "${name}" ใช่ไหม? ลบแล้วกู้คืนไม่ได้`)) return;
+  try {
+    await runtime.remove(current, row[t.key]);
+    await load(`ลบ${t.title}แล้ว`);
+  } catch (err) { alert(err.message); }
+}
+
+async function load(message) {
+  data = await runtime.tables();
+  render();
+  $("status").textContent = (message ? message + " · " : "") + "อัปเดตล่าสุด " + new Date().toLocaleTimeString("th-TH");
+}
+
+$("addBtn").onclick = () => openForm(null);
+$("search").oninput = render;
+$("refresh").onclick = async () => { if (runtime.reload) await runtime.reload(); load(); };
+
+(async () => {
+  try {
+    runtime = await startRuntime();
+  } catch {
+    $("status").textContent = "เชื่อมต่อระบบไม่สำเร็จ กรุณารีเฟรชหน้าอีกครั้ง";
+    return;
+  }
+  if (runtime.mode === "browser") {
+    $("banner").hidden = false;
+    $("banner").innerHTML = `<span>โหมดสาธิต (GitHub Pages): ข้อมูลเก็บไว้ในเบราว์เซอร์นี้เท่านั้น
+      คนอื่นไม่เห็น และหายถ้าล้างข้อมูลเบราว์เซอร์</span>`;
+    const reset = document.createElement("button");
+    reset.className = "btn ghost small"; reset.type = "button"; reset.textContent = "รีเซ็ตเป็นข้อมูลตัวอย่าง";
+    reset.onclick = async () => {
+      if (!confirm("ลบข้อมูลที่แก้ไขทั้งหมด แล้วกลับไปใช้ข้อมูลตัวอย่าง ใช่ไหม?")) return;
+      await runtime.reset(); load("รีเซ็ตแล้ว");
+    };
+    $("banner").append(reset);
+    addEventListener("storage", async () => { await runtime.reload(); load(); });  // chat tab made a ticket
+  }
+  try { await load(); }
+  catch (err) { $("status").textContent = err.message; }
+})();
+</script>
+</body>
+</html>

@@ -85,6 +85,7 @@
 <body>
 <div class="chat">
   <header><span class="dot"></span><div><h1>ศูนย์บริการลูกค้า</h1><small>ผู้ช่วยอัตโนมัติ · พิมพ์หรือพูดก็ได้</small></div>
+    <a href="admin.html" class="icon" title="ดูและแก้ไขข้อมูลลูกค้า" style="text-decoration:none">📋</a>
     <button id="callBtn" class="icon" type="button" title="โทรคุยกับผู้ช่วย" hidden disabled>📞</button>
     <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button></header>
   <div id="log" aria-live="polite"></div>
@@ -115,6 +116,7 @@
     <div><button id="hangup" type="button" aria-label="วางสาย">📞</button><label>วางสาย</label></div>
   </div>
 </div>
+<script src="runtime.js"></script>
 <script>
 const log = document.getElementById("log"), quick = document.getElementById("quick");
 const form = document.getElementById("form"), input = document.getElementById("text");
@@ -153,52 +155,11 @@ function show(reply) {
   }
 }
 
-// Two ways to run the same bot:
-// * server mode: channels/webchat/server.py answers at api/ (real backend, production)
-// * browser mode: no server (GitHub Pages), so the Python bot runs in the page with Pyodide.
-//   Demo only: real customer data and API keys must never be shipped to the browser.
-const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v314.0.8/full/";
-let mode = null, py = null;
-
-async function useServer() {
-  try { return (await fetch("api/health")).ok; } catch { return false; }
-}
-
-async function loadBrowserBot() {
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = PYODIDE_URL + "pyodide.js"; s.onload = resolve; s.onerror = reject;
-    document.head.appendChild(s);
-  });
-  py = await loadPyodide({ indexURL: PYODIDE_URL });
-  const files = await (await fetch("callcenter_bot/files.json")).json();
-  py.FS.mkdirTree("/app/callcenter_bot");
-  for (const f of files) {
-    py.FS.writeFile("/app/callcenter_bot/" + f, await (await fetch("callcenter_bot/" + f)).text());
-  }
-  py.runPython(`
-import json, sys
-sys.path.insert(0, "/app")
-from callcenter_bot import Bot
-_bot = Bot()
-def _chat(sid, message):
-    return json.dumps({"session_id": sid, **_bot.reply(sid, message).to_dict()}, ensure_ascii=False)
-def _start(sid):
-    _bot.reset(sid)
-    return json.dumps({"session_id": sid, **_bot.welcome().to_dict()}, ensure_ascii=False)
-`);
-}
+// The bot runs on the server or inside this page (GitHub Pages): see runtime.js.
+let runtime = null;
 
 async function call(path, body) {
-  if (mode === "browser") {
-    const fn = py.globals.get(path === "api/start" ? "_start" : "_chat");
-    const args = path === "api/start" ? [sessionId] : [sessionId, body.message];
-    return JSON.parse(fn(...args));
-  }
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ session_id: sessionId, ...body }) });
-  if (!r.ok) throw new Error(r.status);
-  return r.json();
+  return path === "api/start" ? runtime.start(sessionId) : runtime.chat(sessionId, body.message);
 }
 
 async function send(text, fromVoice = false) {
@@ -267,7 +228,7 @@ speakBtn.onclick = () => setSpeak(!speakOn);
 function speak(reply) {
   if (!speakOn) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(reply.text.replace(/\s*\n\s*/g, " "));
+  const u = new SpeechSynthesisUtterance((reply.speech || reply.text).replace(/\s*\n\s*/g, " "));
   u.lang = "th-TH";
   if (thaiVoice) u.voice = thaiVoice;
   // Hands-free: after the bot finishes speaking, listen again, like a phone call.
@@ -386,10 +347,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function callStatus(text, state = "") { callStatusEl.textContent = text; callScreen.dataset.state = state; }
 
-function say(text) {   // speak and wait until done
+// Speak a line and wait until done. The caption shows exactly the line being spoken:
+// line.text as written, line.speech as read aloud (same words, numbers digit by digit).
+function say(line) {
   return new Promise(resolve => {
     if (!inCall) return resolve();
     speechSynthesis.cancel();
+    callCaption.textContent = line.text;
+    const text = line.speech || line.text;
     const u = new SpeechSynthesisUtterance(text.replace(/\s*\n\s*/g, " "));
     u.lang = "th-TH";
     if (thaiVoice) u.voice = thaiVoice;
@@ -484,9 +449,11 @@ async function runCall() {
   // The bot's own wording tells us its voice: ครับ or ค่ะ/คะ.
   const [p, q] = reply.text.includes("ครับ") ? ["ครับ", "ครับ"] : ["ค่ะ", "คะ"];
   const menu = (reply.quick_replies || []).filter(x => !x.includes("เจ้าหน้าที่")).join(" ");
-  let speech = `${reply.text} พูดได้เลย${p} เช่น ${menu} หรือคุยกับเจ้าหน้าที่`;
+  const invite = ` พูดได้เลย${p} เช่น ${menu} หรือคุยกับเจ้าหน้าที่`;
+  let speech = { text: reply.text + invite, speech: reply.speech + invite };
   let silence = 0;
-  add(reply.text, "bot");
+  add(speech.text, "bot");
+  const line = text => { add(text, "bot"); return { text }; };  // a line the call itself adds
   while (inCall) {
     showCallReply(reply);
     if (speech) await say(speech);
@@ -506,9 +473,9 @@ async function runCall() {
     if (!msg) {                                  // silence
       if (muted || !keypad.hidden) continue;     // typing on the keypad is not silence
       silence++;
-      if (silence === 2) speech = `ยังอยู่ในสายไหม${q} ถ้าต้องการให้ช่วยเรื่องใด พูดได้เลย${p}`;
+      if (silence === 2) speech = line(`ยังอยู่ในสายไหม${q} ถ้าต้องการให้ช่วยเรื่องใด พูดได้เลย${p}`);
       if (silence >= 3) {
-        await say(`ไม่ได้ยินเสียง ขออนุญาตวางสายก่อน${p} ขอบคุณที่ติดต่อ${p}`);
+        await say(line(`ไม่ได้ยินเสียง ขออนุญาตวางสายก่อน${p} ขอบคุณที่ติดต่อ${p}`));
         return hangUp();
       }
       continue;
@@ -521,12 +488,12 @@ async function runCall() {
     try {
       reply = await call("api/chat", { message: msg });
     } catch {
-      speech = `ขออภัย ระบบขัดข้องชั่วคราว รบกวนพูดอีกครั้ง${p}`;
+      speech = line(`ขออภัย ระบบขัดข้องชั่วคราว รบกวนพูดอีกครั้ง${p}`);
       continue;
     }
     if (!reply.expects) showKeypad(false);
     add(reply.text, "bot");
-    speech = reply.text;
+    speech = reply;
   }
 }
 
@@ -588,12 +555,12 @@ callBtn.hidden = !(Recognition && canSpeak);   // a call needs both listening an
 
 async function init() {
   input.disabled = true;
-  mode = (await useServer()) ? "server" : "browser";
-  if (mode === "browser") {
-    note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลลูกค้าเป็นข้อมูลตัวอย่าง");
-    note("กำลังโหลดผู้ช่วย… (ครั้งแรกอาจใช้เวลาสักครู่)");
-    await loadBrowserBot();
-    log.lastChild.remove();  // the loading note
+  note("กำลังโหลดผู้ช่วย… (ครั้งแรกอาจใช้เวลาสักครู่)");
+  runtime = await startRuntime();
+  log.lastChild.remove();  // the loading note
+  if (runtime.mode === "browser") {
+    note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลเก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ดู/แก้ได้ที่ 📋 ข้อมูล)");
+    addEventListener("storage", () => runtime.reload());  // rows edited in the admin tab
   }
   show(await call("api/start", {}));
   input.disabled = false;

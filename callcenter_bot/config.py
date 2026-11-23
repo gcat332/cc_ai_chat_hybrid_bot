@@ -17,6 +17,13 @@ PAYMENT_CHANNELS = [
     "บัตรเครดิตผ่านเว็บไซต์",
 ]
 
+# Names text-to-speech mispronounces, and how they should sound.
+SAY_AS = {
+    "7-Eleven": "เซเว่นอีเลฟเว่น",
+    "Kerry Express": "เคอรี่ เอ็กซ์เพรส",
+    "QR": "คิวอาร์",
+}
+
 MAIN_MENU = ["เช็คยอดค้างชำระ", "ติดตามคำสั่งซื้อ", "แจ้งปัญหา", "คุยกับเจ้าหน้าที่"]
 
 # How many times the bot may misunderstand before it offers a human agent.

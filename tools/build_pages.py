@@ -16,10 +16,13 @@ def build(out: Path):
         shutil.rmtree(out)
     bot_out = out / "callcenter_bot"
     bot_out.mkdir(parents=True)
-    shutil.copy(ROOT / "channels/webchat/static/index.html", out / "index.html")
-    files = sorted(p.name for p in (ROOT / "callcenter_bot").glob("*.py"))
+    for page in ("index.html", "admin.html", "runtime.js"):
+        shutil.copy(ROOT / "channels/webchat/static" / page, out / page)
+    src = ROOT / "callcenter_bot"
+    files = sorted(str(p.relative_to(src)) for p in [*src.glob("*.py"), *src.glob("data/*.sql")])
     for name in files:
-        shutil.copy(ROOT / "callcenter_bot" / name, bot_out / name)
+        (bot_out / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(src / name, bot_out / name)
     (bot_out / "files.json").write_text(json.dumps(files))
     (out / ".nojekyll").touch()  # serve files as they are
     print(f"Built {out} with {len(files)} bot files")

@@ -1,16 +1,28 @@
-"""Web chat channel (phase 1). Standard library only.
+"""Web chat channel. Standard library only.
 
     python -m channels.webchat.server            # http://localhost:8000
     python -m channels.webchat.server --port 9000
 
-API (the page in static/ uses it; your own website or app can call it too):
+API (the pages in static/ use it; your own website or app can call it too):
     POST /api/chat   {"session_id": "...", "message": "..."}  -> Reply as JSON
     POST /api/start  {"session_id": "..."}                    -> welcome Reply
     GET  /api/health                                         -> {"ok": true}
 
+Admin page for the tables (customers, orders, tickets): /admin
+    Needs a password: set ADMIN_PASSWORD before starting. The browser asks for it
+    (user name: admin). Without ADMIN_PASSWORD the admin page is switched off.
+    GET  /api/admin/tables                                   -> all rows
+    POST /api/admin/save    {"table", "row", "old_key"}       -> {"ok": true} or {"error": "..."}
+    POST /api/admin/delete  {"table", "key"}                  -> {"ok": true}
+
+The tables are in data/callcenter.db (set CALLCENTER_DB to move it), created with demo rows
+the first time.
+
 Add --ai to answer questions the rules do not cover with Claude (see callcenter_bot/ai_fallback.py).
 """
 import argparse
+import base64
+import hmac
 import json
 import logging
 import os
@@ -18,32 +30,61 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from callcenter_bot import Bot
+from callcenter_bot import Bot, admin, db
 from callcenter_bot.privacy import mask_digits
 
 STATIC = Path(__file__).parent / "static"
+PAGES = {"/": "index.html", "/index.html": "index.html", "/admin": "admin.html",
+         "/admin.html": "admin.html", "/runtime.js": "runtime.js"}
+TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
 MAX_MESSAGE_CHARS = 1000
 log = logging.getLogger("webchat")
 bot = Bot()
 
 
+def admin_password():
+    return os.environ.get("ADMIN_PASSWORD", "")
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
-        if self.path == "/api/health":
+        path = self.path.split("?")[0]
+        if path == "/api/health":
             return self._json(200, {"ok": True})
+        if path.startswith("/admin") or path.startswith("/api/admin"):
+            if not self._admin_ok():
+                return
+            if path == "/api/admin/tables":
+                return self._json(200, db.all_tables())
+        if path in PAGES:
+            file = STATIC / PAGES[path]
+            self.send_response(200)
+            self.send_header("Cache-Control", "no-store")
+            return self._send(200, file.read_bytes(), TYPES[file.suffix], started=True)
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path not in ("/api/chat", "/api/start"):
-            return self._json(404, {"error": "not found"})
         try:
             length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(min(length, 16_000)) or b"{}")
+            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid JSON"})
 
+        if self.path.startswith("/api/admin/"):
+            if not self._admin_ok():
+                return
+            if self.path == "/api/admin/save":
+                result = admin.save(str(body.get("table")), dict(body.get("row") or {}), body.get("old_key"))
+            elif self.path == "/api/admin/delete":
+                result = admin.delete(str(body.get("table")), body.get("key"))
+            else:
+                return self._json(404, {"error": "not found"})
+            log.info("admin %s %s -> %s", self.path.rsplit("/", 1)[1], body.get("table"),
+                     "ok" if result.get("ok") else "refused")
+            return self._json(200 if result.get("ok") else 400, result)
+
+        if self.path not in ("/api/chat", "/api/start"):
+            return self._json(404, {"error": "not found"})
         session_id = str(body.get("session_id") or uuid.uuid4())[:64]
         if self.path == "/api/start":
             bot.reset(session_id)
@@ -59,12 +100,29 @@ class Handler(BaseHTTPRequestHandler):
             log.info("session=%s handed to a human agent", session_id[:8])
         self._json(200, {"session_id": session_id, **reply.to_dict()})
 
+    def _admin_ok(self) -> bool:
+        """HTTP Basic auth: user "admin", password ADMIN_PASSWORD. Sends the refusal itself."""
+        password = admin_password()
+        if not password:
+            self._send(403, "หน้าจัดการข้อมูลปิดอยู่: ตั้งค่า ADMIN_PASSWORD แล้วเริ่มเซิร์ฟเวอร์ใหม่"
+                       .encode("utf-8"), "text/plain; charset=utf-8")
+            return False
+        expected = "Basic " + base64.b64encode(f"admin:{password}".encode()).decode()
+        if hmac.compare_digest(self.headers.get("Authorization", "").encode(), expected.encode()):
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="callcenter-admin", charset="UTF-8"')
+        self._send(401, "ต้องใส่รหัสผ่าน (ชื่อผู้ใช้: admin)".encode("utf-8"),
+                   "text/plain; charset=utf-8", started=True)
+        return False
+
     def _json(self, status, data):
         self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
-    def _send(self, status, payload: bytes, content_type: str):
-        self.send_response(status)
+    def _send(self, status, payload: bytes, content_type: str, started: bool = False):
+        if not started:
+            self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -83,6 +141,8 @@ def main():
                              "(needs: pip install -r requirements-ai.txt, and ANTHROPIC_API_KEY)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    db.use_database(db.DEFAULT_PATH)
+    print(f"Database: {db.DEFAULT_PATH}")
     global bot
     if args.ai:
         from callcenter_bot.ai_fallback import MODEL, make_claude_fallback
@@ -93,6 +153,10 @@ def main():
                   "AI answers will fail and the bot will use its rules-only replies.")
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Web chat on http://{args.host}:{args.port}  (Ctrl+C to stop)")
+    if admin_password():
+        print(f"Admin page on http://{args.host}:{args.port}/admin  (user: admin)")
+    else:
+        print("Admin page off: set ADMIN_PASSWORD to turn it on")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

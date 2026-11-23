@@ -19,7 +19,7 @@ from . import backend, config
 from .intents import detect, is_cancel, yes_no
 from .normalize import compact, digits_only, normalize, strip_particles
 from .privacy import mask_digits
-from .thai_format import baht, mask_phone, thai_date
+from .thai_format import baht, mask_phone, speech_text, thai_date
 
 P, Q, ME = config.STATEMENT_PARTICLE, config.QUESTION_PARTICLE, config.SELF
 
@@ -36,6 +36,11 @@ class Reply:
     handoff: bool = False  # the channel should pass the customer to a human agent
     end: bool = False  # the conversation is over
     expects: Optional[str] = None  # "digits": the bot is waiting for a number (show a keypad)
+    speech: str = ""  # the same reply worded for text-to-speech (numbers read digit by digit)
+
+    def __post_init__(self):
+        if not self.speech:
+            self.speech = speech_text(self.text, config.SAY_AS)
 
     def to_dict(self):
         return asdict(self)
@@ -186,8 +191,12 @@ class Bot:
         s.leave_flow()
         text = f"คำสั่งซื้อเลข {m.group()} สถานะ: {order['status']}"
         if order["carrier"]:
-            text += f" จัดส่งโดย {order['carrier']} เลขพัสดุ {order['tracking']}"
-        if order["status"].startswith("จัดส่งสำเร็จ"):
+            text += f" จัดส่งโดย {order['carrier']}"
+            if order["tracking"]:
+                text += f" เลขพัสดุ {order['tracking']}"
+        if not order["eta"]:
+            text += f" {P}"
+        elif order["status"].startswith("จัดส่งสำเร็จ"):
             text += f" เมื่อวันที่ {thai_date(order['eta'])} {P}"
         else:
             text += f" คาดว่าจะได้รับภายในวันที่ {thai_date(order['eta'])} {P}"
@@ -223,8 +232,8 @@ class Bot:
     def _balance(self, s: Session) -> Reply:
         c = backend.find_customer(s.verified_phone)
         if c["balance"] > 0:
-            text = (f"คุณ{c['name']} มียอดค้างชำระ {baht(c['balance'])} "
-                    f"ครบกำหนดชำระวันที่ {thai_date(c['due'])} {P}")
+            text = f"คุณ{c['name']} มียอดค้างชำระ {baht(c['balance'])} "
+            text += f"ครบกำหนดชำระวันที่ {thai_date(c['due'])} {P}" if c["due"] else P
         else:
             text = f"คุณ{c['name']} ไม่มียอดค้างชำระ{P} ขอบคุณที่ชำระตรงเวลา{P}"
         return Reply(text, ["ช่องทางชำระเงิน", "แจ้งปัญหา", "จบการสนทนา"], "check_balance")

@@ -1,6 +1,6 @@
 import unittest
 
-from callcenter_bot import Bot
+from callcenter_bot import Bot, db
 from callcenter_bot.intents import detect, is_cancel, yes_no
 from callcenter_bot.normalize import compact, digits_only, normalize
 
@@ -57,6 +57,7 @@ class IntentTest(unittest.TestCase):
 
 class ConversationTest(unittest.TestCase):
     def setUp(self):
+        db.use_database(":memory:")  # fresh demo tables for every test, never the real file
         self.bot = Bot()
 
     def say(self, *lines, session="s"):

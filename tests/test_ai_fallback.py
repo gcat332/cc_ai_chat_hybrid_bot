@@ -2,7 +2,7 @@
 import unittest
 from types import SimpleNamespace
 
-from callcenter_bot import Bot
+from callcenter_bot import Bot, db
 
 try:
     import anthropic
@@ -30,6 +30,9 @@ class FakeClient:
 
 @unittest.skipIf(anthropic is None, "pip install -r requirements-ai.txt")
 class AIFallbackTest(unittest.TestCase):
+    def setUp(self):
+        db.use_database(":memory:")
+
     def bot_with(self, result):
         client = FakeClient(result)
         return Bot(fallback=make_claude_fallback(client=client)), client

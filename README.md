@@ -64,6 +64,10 @@ install, no API key, and it works on GitHub Pages.
     transfer. In this demo no real agent system is connected, so the call then ends.
   - The whole call appears in the chat afterwards.
   - If the mic cannot be used, the call continues with the keypad and buttons, and says why.
+- 🔢 **Numbers read the way an agent would:** phone, order and ticket numbers are read digit by
+  digit ("ศูนย์ แปด หนึ่ง…"), money as "1250 บาท 50 สตางค์", and times as "8 นาฬิกา". The screen
+  shows the text as written. Each reply carries a `speech` version for text-to-speech, which phase
+  2 can reuse. Names TTS mispronounces go in `SAY_AS` in `config.py`.
 - 🔊 **Spoken replies**: turned on automatically when you use the mic. Tap to switch off.
 - Numbers said as words ("ศูนย์แปดหนึ่ง…", "หนึ่ง สอง สาม สี่") are understood as digits.
 
@@ -106,6 +110,36 @@ python -m channels.webchat.server --ai
   `ai_fallback.py`, e.g. to `claude-haiku-5-5`, and test the Thai quality on your own questions.
 - **Not on GitHub Pages:** the API key must stay on a server. The Pages demo is rules-only.
 
+## Data tables (customers, balances, orders, tickets)
+
+The bot reads and writes real tables in SQLite, which is part of Python, so there is nothing to
+install:
+
+| Table | What it holds |
+|---|---|
+| `customers` | phone, name, last 4 ID-card digits (for the identity check), outstanding balance, due date |
+| `orders` | 6-digit order number, customer phone, status, carrier, tracking number, delivery date |
+| `tickets` | problems reported in the chat: number (TK1001…), verified phone, description, status |
+
+The tables are defined in `callcenter_bot/data/schema.sql`. Demo rows, including the test number
+`0636538939` (ID last 4 digits `8939`), are in `callcenter_bot/data/seed.sql`.
+
+**Admin page `/admin`** (📋 in the chat header): view, search, add, edit and delete rows, and
+update ticket status. Changes are used by the bot straight away. Wrong input is refused with a
+Thai message, e.g. a 9-digit order number.
+
+- **Server:** the database is the file `data/callcenter.db`, created with the demo rows on first
+  start (set `CALLCENTER_DB` to move it). The admin page needs a password:
+  ```bash
+  ADMIN_PASSWORD=choose-a-password python -m channels.webchat.server
+  ```
+  Then open http://localhost:8000/admin and sign in with user `admin`.
+- **GitHub Pages:** the same tables run inside the browser, with no password. Changes are kept
+  in that browser only. Other people don't see them, and "รีเซ็ตเป็นข้อมูลตัวอย่าง" restores
+  the demo rows. Use the server for real customer data.
+- To use your company's own systems instead, rewrite the four functions in
+  `callcenter_bot/backend.py`.
+
 ## What it handles
 
 | Topic | Example customer line | What happens |
@@ -135,8 +169,9 @@ It also handles:
 | `callcenter_bot/normalize.py` | Cleans up Thai input before matching |
 | `callcenter_bot/bot.py` | Conversation engine: topics, steps, verification, handoff |
 | `callcenter_bot/ai_fallback.py` | Optional AI answers (Claude) for what the rules don't cover |
-| `callcenter_bot/backend.py` | **Mock** customer, order and ticket data. Replace with your real APIs. |
-| `channels/webchat/` | Web server (`server.py`) and chat page (`static/index.html`) |
+| `callcenter_bot/db.py`, `data/*.sql` | The tables, demo rows, and checks for admin edits |
+| `callcenter_bot/backend.py` | What the bot asks of the tables. Rewrite to use your real systems. |
+| `channels/webchat/` | Web server (`server.py`), chat page (`static/index.html`), admin page (`static/admin.html`), and `static/runtime.js`, which runs the bot on the server or in the browser |
 | `channels/voice/` | Phase 2 plan |
 | `tests/` | Unit and conversation tests |
 
@@ -157,6 +192,9 @@ It also handles:
 
 - Serve behind HTTPS (nginx, or a cloud load balancer). Add rate limiting.
 - Sessions are kept in memory, so a restart forgets them and they work on one process only.
+- The database is a single SQLite file. Back it up, and keep it off the public web root. For many
+  agents or servers at once, move the tables to PostgreSQL or MySQL (same columns, same `db.py` calls).
+- The admin password is HTTP Basic auth: serve over HTTPS only, and use a long password.
   Move them to Redis to run more than one server.
 - PDPA: logs mask phone and ID numbers (`mask_digits`). Add a privacy notice to the chat page,
   and set a retention period for transcripts.
