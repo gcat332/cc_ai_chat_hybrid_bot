@@ -35,6 +35,7 @@ class Reply:
     intent: Optional[str] = None
     handoff: bool = False  # the channel should pass the customer to a human agent
     end: bool = False  # the conversation is over
+    expects: Optional[str] = None  # "digits": the bot is waiting for a number (show a keypad)
 
     def to_dict(self):
         return asdict(self)
@@ -74,6 +75,8 @@ class Bot:
             s = self.sessions.setdefault(session_id, Session())
             s.last_active = time.time()
             reply = self._reply(s, session_id, message)
+            if s.step in ("need_phone", "need_id4", "need_order"):
+                reply.expects = "digits"
             if session_id in self.sessions and normalize(message):  # not ended, not empty
                 s.history += [("user", mask_digits(normalize(message))), ("assistant", reply.text)]
                 del s.history[:-20]

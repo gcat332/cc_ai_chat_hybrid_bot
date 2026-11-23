@@ -5,11 +5,11 @@ A rule-based Thai customer-service assistant, built in the spirit of
 no packages to install. Every answer comes from rules you can read, test and audit.
 
 - **Phase 1 (this): web chat, by typing or by voice.** A chat page and a JSON API.
-  Hold 🎤 to talk (release to send), or tap it for hands-free. The bot answers aloud.
+  Hold 🎤 to talk (release to send), tap it for hands-free, or press 📞 for a phone-call screen.
 - **Phase 2: phone line.** The same bot core behind telephony, speech-to-text and text-to-speech.
   See [channels/voice/README.md](channels/voice/README.md).
 
-![Web chat demo](docs/webchat-demo.png)
+![Web chat demo](docs/webchat-demo.png) ![Call mode](docs/call-demo.png)
 
 ## Run it
 
@@ -53,6 +53,17 @@ install, no API key, and it works on GitHub Pages.
   - **Tap** (hands-free): talk, and it sends when you pause. After the bot answers aloud it listens
     again, so a whole conversation runs hands-free. Tap 🎤 again, type, or press a button to stop.
   - Talking over the bot interrupts it.
+- 📞 **Call mode**: a phone-call screen. Talk back and forth with no buttons, like calling the
+  call center:
+  - The bot greets you and reads the menu, listens, answers aloud, then listens again.
+  - When it asks for a phone, ID or order number, a **keypad** opens. Speak the number or type it
+    and press ส่ง (like # on a phone).
+  - **Mute** 🎙️, **keypad** ⌨️ and **hang up** buttons, plus a call timer and live captions. The
+    screen stays on during the call.
+  - Silence: "ยังอยู่ในสายไหมคะ", then the bot hangs up politely. Asking for an agent shows the
+    transfer. In this demo no real agent system is connected, so the call then ends.
+  - The whole call appears in the chat afterwards.
+  - If the mic cannot be used, the call continues with the keypad and buttons, and says why.
 - 🔊 **Spoken replies**: turned on automatically when you use the mic. Tap to switch off.
 - Numbers said as words ("ศูนย์แปดหนึ่ง…", "หนึ่ง สอง สาม สี่") are understood as digits.
 

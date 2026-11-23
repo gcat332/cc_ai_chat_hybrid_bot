@@ -69,6 +69,11 @@ class ConversationTest(unittest.TestCase):
         # Verified once per session: asking again answers straight away.
         self.assertIn("1,250.50", self.say("ดูยอดอีกที").text)
 
+    def test_expects_digits_while_waiting_for_a_number(self):
+        self.assertEqual(self.say("เช็คยอดค้างชำระ").expects, "digits")
+        self.assertEqual(self.say("0812345678").expects, "digits")  # now the ID digits
+        self.assertIsNone(self.say("1234").expects)                  # answered: no keypad
+
     def test_phone_in_first_message(self):
         r = self.say("เช็คยอด 0812345678 ครับ")
         self.assertIn("4 ตัวท้าย", r.text)

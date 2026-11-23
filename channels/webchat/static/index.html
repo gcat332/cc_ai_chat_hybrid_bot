@@ -36,7 +36,8 @@
                 padding: 0 18px; font: inherit; cursor: pointer; }
   form button:disabled, input:disabled { opacity: .5; }
   .icon { border: 0; background: transparent; font-size: 20px; cursor: pointer; padding: 0 6px; }
-  header .icon { margin-left: auto; color: #fff; }
+  header > div { flex: 1; }
+  header .icon { color: #fff; }
   form .icon { border: 1px solid #ccc; border-radius: 50%; width: 42px; height: 42px; padding: 0;
                background: #fff; color: var(--brand); flex: none; }
   /* press-and-hold must not open the phone's long-press menu or select text */
@@ -44,11 +45,47 @@
   form .icon.on { background: #d93025; border-color: #d93025; color: #fff;
                   animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(217,48,37,.25); } }
+
+  /* ---- call screen ---- */
+  #callScreen { position: fixed; inset: 0; margin: 0 auto; max-width: 440px; z-index: 10;
+                display: flex; flex-direction: column; align-items: center; padding: 28px 20px 24px;
+                color: #fff; background: linear-gradient(180deg, #0b6e4f 0%, #063f2d 100%); }
+  #callScreen[hidden] { display: none; }
+  .call-name { font-size: 22px; font-weight: 600; margin-top: 8px; }
+  #callTimer { font-variant-numeric: tabular-nums; opacity: .85; margin-top: 2px; }
+  .avatar { width: 116px; height: 116px; border-radius: 50%; margin: 26px 0 14px; font-size: 54px;
+            display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.15); }
+  #callScreen[data-state="listening"] .avatar { animation: ring 1.4s ease-out infinite; }
+  #callScreen[data-state="speaking"] .avatar { animation: talk .9s ease-in-out infinite; }
+  @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(124,252,154,.6); } 100% { box-shadow: 0 0 0 26px rgba(124,252,154,0); } }
+  @keyframes talk { 50% { transform: scale(1.06); background: rgba(255,255,255,.25); } }
+  #callStatus { font-size: 15px; min-height: 22px; opacity: .95; text-align: center; }
+  .caption { width: 100%; flex: 1; overflow-y: auto; margin: 14px 0 10px; text-align: center; }
+  #callCaption { font-size: 17px; line-height: 1.6; white-space: pre-wrap; }
+  #callInterim { margin-top: 10px; font-size: 16px; color: #b8f5c9; min-height: 24px; }
+  #callError { margin-top: 10px; font-size: 14px; color: #ffd2cc; }
+  #callChips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
+  #callChips button { border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff;
+                      border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  #keypad { display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; margin-bottom: 14px; }
+  #keypad[hidden] { display: none; }
+  #digits { grid-column: 1 / -1; text-align: center; font-size: 24px; letter-spacing: 2px;
+            min-height: 34px; font-variant-numeric: tabular-nums; }
+  #keypad button { height: 54px; border-radius: 27px; border: 0; font: inherit; font-size: 22px;
+                   background: rgba(255,255,255,.16); color: #fff; cursor: pointer; }
+  #keypad button.ok { background: #7CFC9A; color: #063f2d; font-size: 16px; font-weight: 600; }
+  .controls { display: flex; gap: 26px; align-items: flex-start; }
+  .controls button { width: 64px; height: 64px; border-radius: 50%; border: 0; font-size: 26px;
+                     background: rgba(255,255,255,.16); color: #fff; cursor: pointer; }
+  .controls button[aria-pressed="true"] { background: #fff; color: #063f2d; }
+  .controls #hangup { background: #d93025; transform: rotate(135deg); }  /* receiver down */
+  .controls label { display: block; text-align: center; font-size: 12px; margin-top: 6px; opacity: .9; }
 </style>
 </head>
 <body>
 <div class="chat">
   <header><span class="dot"></span><div><h1>ศูนย์บริการลูกค้า</h1><small>ผู้ช่วยอัตโนมัติ · พิมพ์หรือพูดก็ได้</small></div>
+    <button id="callBtn" class="icon" type="button" title="โทรคุยกับผู้ช่วย" hidden disabled>📞</button>
     <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button></header>
   <div id="log" aria-live="polite"></div>
   <div id="quick"></div>
@@ -57,6 +94,26 @@
     <input id="text" autocomplete="off" placeholder="พิมพ์ข้อความ หรือกดไมค์เพื่อพูด" aria-label="ข้อความ">
     <button>ส่ง</button>
   </form>
+</div>
+<div id="callScreen" hidden data-state="" role="dialog" aria-label="กำลังโทร">
+  <div class="call-name">ศูนย์บริการลูกค้า</div>
+  <div id="callTimer">00:00</div>
+  <div class="avatar" aria-hidden="true">🎧</div>
+  <div id="callStatus" aria-live="polite">กำลังเชื่อมต่อ…</div>
+  <div class="caption">
+    <div id="callCaption"></div>
+    <div id="callInterim"></div>
+    <div id="callError" role="alert"></div>
+  </div>
+  <div id="callChips"></div>
+  <div id="keypad" hidden>
+    <div id="digits" aria-live="polite"></div>
+  </div>
+  <div class="controls">
+    <div><button id="muteBtn" type="button" aria-pressed="false" aria-label="ปิดไมค์">🎙️</button><label>ปิดไมค์</label></div>
+    <div><button id="keypadBtn" type="button" aria-pressed="false" aria-label="แป้นตัวเลข">⌨️</button><label>แป้นตัวเลข</label></div>
+    <div><button id="hangup" type="button" aria-label="วางสาย">📞</button><label>วางสาย</label></div>
+  </div>
 </div>
 <script>
 const log = document.getElementById("log"), quick = document.getElementById("quick");
@@ -314,6 +371,221 @@ if (Recognition) {
   micBtn.addEventListener("contextmenu", e => e.preventDefault());
 }
 else micBtn.hidden = true;  // e.g. Firefox: typing still works
+// ---- Call mode: a phone-call screen. Talk back and forth with no buttons, like a phone line. ---
+// The loop: the bot speaks -> listens -> the customer's words go to the bot -> repeat.
+// Numbers can also be typed on the keypad. Silence gets "ยังอยู่ในสายไหม", then the call ends.
+const $ = id => document.getElementById(id);
+const callBtn = $("callBtn"), callScreen = $("callScreen"), callStatusEl = $("callStatus");
+const callCaption = $("callCaption"), callInterim = $("callInterim"), callErrorEl = $("callError");
+const callChips = $("callChips"), keypad = $("keypad"), digitsEl = $("digits"), callTimer = $("callTimer");
+const muteBtn = $("muteBtn"), keypadBtn = $("keypadBtn");
+let inCall = false, muted = false, injected = null, wakeHear = null, callRec = null;
+let callStarted = 0, timerId = null, wakeLock = null, digits = "";
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function callStatus(text, state = "") { callStatusEl.textContent = text; callScreen.dataset.state = state; }
+
+function say(text) {   // speak and wait until done
+  return new Promise(resolve => {
+    if (!inCall) return resolve();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/\s*\n\s*/g, " "));
+    u.lang = "th-TH";
+    if (thaiVoice) u.voice = thaiVoice;
+    let timer;
+    const done = () => { clearTimeout(timer); resolve(); };
+    u.onend = done; u.onerror = done;
+    timer = setTimeout(done, 4000 + text.length * 120);  // some browsers never fire onend
+    callStatus("ผู้ช่วยกำลังพูด…", "speaking");
+    speechSynthesis.speak(u);
+  });
+}
+
+// Listen for one utterance. Resolves with the words, "" for silence, or null when something else
+// (keypad, a button, mute) interrupted: then the loop just goes round again.
+function hear() {
+  return new Promise(resolve => {
+    let heard = "", settled = false, timer = null;
+    const finish = v => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); wakeHear = null; callRec = null; callInterim.textContent = "";
+      resolve(v);
+    };
+    wakeHear = finish;
+    if (muted) { callStatus("ปิดไมค์อยู่ · กดแป้นตัวเลขหรือปุ่มด้านบนได้", "muted"); return; }
+    const rec = callRec = new Recognition();
+    rec.lang = "th-TH"; rec.interimResults = true; rec.continuous = false;
+    rec.onaudiostart = () => callStatus("กำลังฟัง… พูดได้เลย", "listening");
+    rec.onspeechstart = () => { clearTimeout(timer); timer = setTimeout(() => rec.stop(), 20000); };
+    rec.onresult = e => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) heard += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      callInterim.textContent = heard + interim;
+    };
+    rec.onerror = e => { if (e.error !== "no-speech" && e.error !== "aborted") callError(e.error); };
+    rec.onend = () => finish(heard.trim());
+    timer = setTimeout(() => rec.abort(), 10000);  // nobody spoke: count it as silence
+    callStatus("กำลังฟัง… พูดได้เลย", "listening");
+    try { rec.start(); } catch { finish(""); }
+  });
+}
+
+function stopListening() {       // end the current listen; the loop goes round again
+  const rec = callRec;           // keep it: wakeHear() clears callRec
+  if (wakeHear) wakeHear(null);
+  if (rec) rec.abort();
+}
+
+function interrupt() {           // stop speaking and listening now
+  speechSynthesis.cancel();
+  stopListening();
+}
+
+function inject(text) { injected = text; interrupt(); }  // keypad or a button answered instead
+
+function callError(code) {
+  callErrorEl.textContent = (MIC_ERRORS[code] || "ฟังเสียงไม่สำเร็จ") + ` (${code}) · ใช้แป้นตัวเลขหรือปุ่มแทนได้`;
+  note((MIC_ERRORS[code] || "ฟังเสียงไม่สำเร็จ") + ` (${code})`);
+  setMuted(true);
+  showKeypad(true);
+}
+
+function setMuted(on) {
+  muted = on;
+  muteBtn.setAttribute("aria-pressed", on);
+  muteBtn.textContent = on ? "🔇" : "🎙️";
+  if (on) stopListening();                    // the mic goes off now
+  else if (wakeHear) wakeHear(null);          // start listening again
+}
+
+function showKeypad(on) {
+  keypad.hidden = !on;
+  keypadBtn.setAttribute("aria-pressed", on);
+}
+
+function showCallReply(reply) {
+  callCaption.textContent = reply.text;
+  callChips.innerHTML = "";
+  for (const label of reply.quick_replies || []) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    b.onclick = () => inject(label);
+    callChips.appendChild(b);
+  }
+  if (reply.expects === "digits") showKeypad(true);
+}
+
+async function runCall() {
+  let reply = await call("api/start", {});
+  // The bot's own wording tells us its voice: ครับ or ค่ะ/คะ.
+  const [p, q] = reply.text.includes("ครับ") ? ["ครับ", "ครับ"] : ["ค่ะ", "คะ"];
+  const menu = (reply.quick_replies || []).filter(x => !x.includes("เจ้าหน้าที่")).join(" ");
+  let speech = `${reply.text} พูดได้เลย${p} เช่น ${menu} หรือคุยกับเจ้าหน้าที่`;
+  let silence = 0;
+  add(reply.text, "bot");
+  while (inCall) {
+    showCallReply(reply);
+    if (speech) await say(speech);
+    speech = null;
+    if (!inCall) return;
+    if (reply.end) { await sleep(400); return hangUp(); }
+    if (reply.handoff) {
+      callStatus("กำลังโอนสายให้เจ้าหน้าที่…", "transfer");
+      await sleep(3500);
+      if (inCall) { note("ตัวอย่าง: ยังไม่ได้เชื่อมต่อระบบเจ้าหน้าที่จริง"); hangUp(); }
+      return;
+    }
+    let msg = injected ? null : await hear();
+    if (!inCall) return;
+    if (injected) { msg = injected; injected = null; }
+    if (msg === null) continue;
+    if (!msg) {                                  // silence
+      if (muted || !keypad.hidden) continue;     // typing on the keypad is not silence
+      silence++;
+      if (silence === 2) speech = `ยังอยู่ในสายไหม${q} ถ้าต้องการให้ช่วยเรื่องใด พูดได้เลย${p}`;
+      if (silence >= 3) {
+        await say(`ไม่ได้ยินเสียง ขออนุญาตวางสายก่อน${p} ขอบคุณที่ติดต่อ${p}`);
+        return hangUp();
+      }
+      continue;
+    }
+    silence = 0;
+    callErrorEl.textContent = "";
+    add(msg, "me");
+    callInterim.textContent = msg;
+    callStatus("กำลังดำเนินการ…", "thinking");
+    try {
+      reply = await call("api/chat", { message: msg });
+    } catch {
+      speech = `ขออภัย ระบบขัดข้องชั่วคราว รบกวนพูดอีกครั้ง${p}`;
+      continue;
+    }
+    if (!reply.expects) showKeypad(false);
+    add(reply.text, "bot");
+    speech = reply.text;
+  }
+}
+
+async function startCall() {
+  if (inCall) return;
+  if (listening && recognizer) recognizer.abort();       // stop the chat mic if it was on
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(""));  // iPhone: unlock speech inside the tap
+  inCall = true; injected = null; digits = ""; digitsEl.textContent = "";
+  setMuted(false); showKeypad(false);
+  callCaption.textContent = ""; callErrorEl.textContent = ""; callChips.innerHTML = "";
+  callStatus("กำลังเชื่อมต่อ…", "connecting");
+  callScreen.hidden = false;
+  callStarted = Date.now();
+  const tick = () => {
+    const sec = Math.floor((Date.now() - callStarted) / 1000);
+    callTimer.textContent = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  };
+  tick(); timerId = setInterval(tick, 1000);
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch { wakeLock = null; }  // keep screen on
+  sessionId = crypto.randomUUID();          // a call is a new conversation
+  sessionStorage.setItem("chat_session", sessionId);
+  quick.innerHTML = "";
+  note("📞 เริ่มการโทร");
+  if (IN_APP) callErrorEl.textContent = "แอปนี้อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้เปิดในเบราว์เซอร์";
+  try { await runCall(); }
+  catch { note("การโทรขัดข้อง กรุณาลองใหม่"); hangUp(); }
+}
+
+function hangUp() {
+  if (!inCall) return;
+  inCall = false;
+  interrupt();
+  clearInterval(timerId);
+  wakeLock?.release().catch(() => {}); wakeLock = null;
+  callScreen.hidden = true;
+  note(`วางสายแล้ว · ${callTimer.textContent}`);
+  input.focus();
+}
+
+// Keypad: digits, ⌫, and ส่ง (like # on a phone).
+for (const k of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "ส่ง"]) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = k;
+  if (k === "ส่ง") b.className = "ok";
+  b.onclick = () => {
+    if (k === "⌫") digits = digits.slice(0, -1);
+    else if (k === "ส่ง") { if (digits) { inject(digits); digits = ""; } }
+    else { digits += k; speechSynthesis.cancel(); }  // typing interrupts the bot, like a phone menu
+    digitsEl.textContent = digits;
+  };
+  keypad.appendChild(b);
+}
+keypadBtn.onclick = () => showKeypad(keypad.hidden);
+muteBtn.onclick = () => setMuted(!muted);
+$("hangup").onclick = hangUp;
+callBtn.onclick = startCall;
+callBtn.hidden = !(Recognition && canSpeak);   // a call needs both listening and speaking
+
 async function init() {
   input.disabled = true;
   mode = (await useServer()) ? "server" : "browser";
@@ -325,6 +597,7 @@ async function init() {
   }
   show(await call("api/start", {}));
   input.disabled = false;
+  callBtn.disabled = false;
   input.focus();
 }
 init().catch(() => note("เชื่อมต่อระบบไม่สำเร็จ กรุณารีเฟรชหน้าอีกครั้ง"));
