@@ -30,10 +30,32 @@ _LETTER = dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
                     "ดับเบิลยู เอ็กซ์ วาย แซด").split()))
 
 
-def _spell(code: str) -> str:
-    """"0812345678" -> "ศูนย์ แปด หนึ่ง ..." and "TK1001" -> "ที เค หนึ่ง ศูนย์ ศูนย์ หนึ่ง"."""
-    return " ".join(_DIGIT[int(ch)] if ch.isdigit() else _LETTER.get(ch.upper(), "")
-                    for ch in code if ch.isalnum())
+_NBSP = "\u00a0"   # holds words together while pauses are added; becomes a plain space at the end
+_THAI = "\u0e00-\u0e7f"
+
+
+def _spell(code: str, groups=None) -> str:
+    """"0812345678" -> "ศูนย์ แปด หนึ่ง, สอง สาม สี่, ห้า หก เจ็ด แปด": one character at a time,
+    with a short pause between groups the way an agent reads a number back."""
+    parts = _re.split(r"[\s\-]+", code) if _re.search(r"[\s\-]", code) else None
+    if parts is None:
+        letters = _re.match(r"[A-Za-z]*", code).group()
+        digits = code[len(letters):]
+        if len(digits) == 10:
+            sizes = (3, 3, 4)
+        elif len(digits) == 9:
+            sizes = (2, 3, 4)
+        elif len(digits) > 4:
+            sizes = (3,) * (len(digits) // 3) + ((len(digits) % 3,) if len(digits) % 3 else ())
+        else:
+            sizes = (len(digits),)
+        parts, i = ([letters] if letters else []), 0
+        for n in sizes:
+            parts.append(digits[i:i + n])
+            i += n
+    words = [" ".join(_DIGIT[int(ch)] if ch.isdigit() else _LETTER.get(ch.upper(), "")
+                      for ch in part if ch.isalnum()) for part in parts if part]
+    return ", ".join(w for w in words if w)
 
 
 def _time(m) -> str:
@@ -46,18 +68,35 @@ def _money(m) -> str:
     return f"{baht_part} บาท" + (f" {satang} สตางค์" if satang else "")
 
 
-def speech_text(text: str, say_as=None) -> str:
-    """Rewrite a reply so text-to-speech reads it as written. `say_as` maps names that
-    TTS mispronounces to how they should sound, e.g. {"7-Eleven": "เซเว่นอีเลฟเว่น"}."""
-    for written, spoken in (say_as or {}).items():
-        text = text.replace(written, spoken)
-    text = _re.sub(r"\b\d{3}-x{3}-(\d{4})\b", lambda m: "ที่ลงท้ายด้วย " + _spell(m.group(1)), text)  # masked phone
-    text = _re.sub(r"^\s*(\d+)\.\s+", r"ข้อ \1 ", text, flags=_re.M)            # "1. ..." list items
-    text = _re.sub(r"(\d{1,2}):(\d{2})\s*(?:น\.)?", _time, text)                 # 08:00 น.
-    text = _re.sub(r"(\d[\d,]*)(?:\.(\d{2}))?\s*บาท", _money, text)              # 1,250.50 บาท
-    # Codes said one character at a time: phone/order/ticket/tracking numbers.
-    text = _re.sub(r"\b[A-Za-z]{1,4}\d{3,}[A-Za-z]{0,3}\b", lambda m: _spell(m.group()), text)
-    text = _re.sub(r"(?<![\d,.])\d(?:[\d\-]*\d){4,}(?![\d,.])", lambda m: _spell(m.group()), text)
-    text = text.replace("–", " ถึง ")
+def speech_text(text: str, say_as=None, keep_together=()) -> str:
+    """Rewrite a reply so text-to-speech reads it as written, with pauses where an agent would
+    pause. `say_as` maps names TTS mispronounces to how they should sound, e.g.
+    {"7-Eleven": "เซเว่นอีเลฟเว่น"}. `keep_together` lists names never to pause inside,
+    e.g. the company name.
+
+    Pauses: "." after a sentence (after ค่ะ/คะ/ครับ), "," between phrases (where Thai text has a
+    space), and "," between the groups of a phone, order or ticket number."""
+    for phrase in keep_together:
+        text = text.replace(phrase, phrase.replace(" ", _NBSP))
+    for written, spoken in (say_as or {}).items():   # a name inside a phrase: no pause around it
+        text = _re.sub(f" ?{_re.escape(written)} ?", lambda m: m.group().replace(written, spoken)
+                       .replace(" ", _NBSP), text)
+    text = _re.sub(r"\b\d{3}-x{3}-(\d{4})\b", "ที่ลงท้ายด้วย ⟦\\1⟧", text)            # masked phone
+    text = _re.sub(r"^\s*(\d+)\.\s+", r"ข้อ \1 ", text, flags=_re.M)                # "1. ..." list items
+    text = _re.sub(r"(\d{1,2}):(\d{2})\s*(?:น\.)?", _time, text)                     # 08:00 น.
+    text = _re.sub(r"(\d[\d,]*)(?:\.(\d{2}))?\s*บาท", _money, text)                  # 1,250.50 บาท
+    text = text.replace("–", f"{_NBSP}ถึง{_NBSP}")
     text = _re.sub(r"[()\"“”]", " ", text)
+    text = _re.sub(r"[ \t]+", " ", text).strip()
+    # Pauses, before numbers are spelled out (so the digit words are not split up).
+    text = _re.sub(r"(ค่ะ|คะ|ครับ|จ้ะ|จ้า)\s*\n\s*|(ค่ะ|คะ|ครับ|จ้ะ|จ้า) ", lambda m: (m.group(1) or m.group(2)) + ". ", text)
+    text = _re.sub(r"\s*\n\s*", ". ", text)
+    text = _re.sub(f"(?<=[{_THAI}]) (?=[{_THAI}])", ", ", text)
+    # Codes said one character at a time: phone/order/ticket/tracking numbers.
+    # ⟪ marks the end of a spelled number: a pause there when the sentence goes on in Thai.
+    text = _re.sub(r"⟦(\d+)⟧", lambda m: " ".join(_DIGIT[int(c)] for c in m.group(1)) + "⟪", text)
+    text = _re.sub(r"\b[A-Za-z]{1,4}\d{3,}[A-Za-z]{0,3}\b", lambda m: _spell(m.group()) + "⟪", text)
+    text = _re.sub(r"(?<![\d,.])\d(?:[\d\-]*\d){4,}(?![\d,.])", lambda m: _spell(m.group()) + "⟪", text)
+    text = _re.sub(f"⟪ (?=[{_THAI}])(?!(?:ค่ะ|คะ|ครับ|จ้ะ|จ้า)(?:[.\\s]|$))", ", ", text).replace("⟪", "")
+    text = text.replace(_NBSP, " ")
     return _re.sub(r"\s+", " ", text).strip()

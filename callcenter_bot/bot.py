@@ -40,7 +40,7 @@ class Reply:
 
     def __post_init__(self):
         if not self.speech:
-            self.speech = speech_text(self.text, config.SAY_AS)
+            self.speech = speech_text(self.text, config.SAY_AS, keep_together=(config.BRAND,))
 
     def to_dict(self):
         return asdict(self)

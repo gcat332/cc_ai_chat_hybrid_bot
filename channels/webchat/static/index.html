@@ -38,6 +38,9 @@
   .icon { border: 0; background: transparent; font-size: 20px; cursor: pointer; padding: 0 6px; }
   header > div { flex: 1; }
   header .icon { color: #fff; }
+  .rate { border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; border-radius: 12px;
+          font: inherit; font-size: 13px; padding: 3px 6px; cursor: pointer; }
+  .rate option { color: #000; }
   form .icon { border: 1px solid #ccc; border-radius: 50%; width: 42px; height: 42px; padding: 0;
                background: #fff; color: var(--brand); flex: none; }
   /* press-and-hold must not open the phone's long-press menu or select text */
@@ -87,7 +90,10 @@
   <header><span class="dot"></span><div><h1>ศูนย์บริการลูกค้า</h1><small>ผู้ช่วยอัตโนมัติ · พิมพ์หรือพูดก็ได้</small></div>
     <a href="admin.html" class="icon" title="ดูและแก้ไขข้อมูลลูกค้า" style="text-decoration:none">📋</a>
     <button id="callBtn" class="icon" type="button" title="โทรคุยกับผู้ช่วย" hidden disabled>📞</button>
-    <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button></header>
+    <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button>
+    <select class="rate" aria-label="ความเร็วเสียง" title="ความเร็วเสียง">
+      <option value="slow">ช้า</option><option value="normal">ปกติ</option><option value="fast">เร็ว</option>
+    </select></header>
   <div id="log" aria-live="polite"></div>
   <div id="quick"></div>
   <form id="form">
@@ -99,6 +105,9 @@
 <div id="callScreen" hidden data-state="" role="dialog" aria-label="กำลังโทร">
   <div class="call-name">ศูนย์บริการลูกค้า</div>
   <div id="callTimer">00:00</div>
+  <select class="rate" aria-label="ความเร็วเสียง" title="ความเร็วเสียง" style="margin-top:8px">
+    <option value="slow">เสียงช้า</option><option value="normal">เสียงปกติ</option><option value="fast">เสียงเร็ว</option>
+  </select>
   <div class="avatar" aria-hidden="true">🎧</div>
   <div id="callStatus" aria-live="polite">กำลังเชื่อมต่อ…</div>
   <div class="caption">
@@ -248,8 +257,55 @@ function warnNoThaiVoice() {
 function thaiUtterance(text) {
   const u = new SpeechSynthesisUtterance(text.replace(/\s*\n\s*/g, " "));
   u.lang = "th-TH";
+  u.rate = RATES[speechRate];
   if (thaiVoice) u.voice = thaiVoice;
   return u;
+}
+
+// Speed and pauses. Engines often run Thai sentences together, so each sentence is spoken
+// on its own with a short pause between. The replies' speech text already has "." between
+// sentences and "," between phrases (see callcenter_bot/thai_format.py).
+const RATES = { slow: 0.8, normal: 0.9, fast: 1.05 };
+let speechRate = RATES[localStorage.getItem("speech_rate")] ? localStorage.getItem("speech_rate") : "normal";
+const SENTENCE_PAUSE_MS = 300;
+let speechGen = 0, finishSpeech = null;
+
+function setRate(value) {
+  speechRate = RATES[value] ? value : "normal";
+  localStorage.setItem("speech_rate", speechRate);
+  document.querySelectorAll(".rate").forEach(el => { el.value = speechRate; });
+}
+
+function cancelSpeech() {        // stop now; whoever waits for the speech is told it was cut short
+  speechGen++;
+  if (finishSpeech) finishSpeech(true);
+  if (canSpeak) speechSynthesis.cancel();
+}
+
+// Speak `text` sentence by sentence. onDone(cancelled) runs once, when all is said or it was cut.
+function speakText(text, onDone = () => {}) {
+  cancelSpeech();
+  const gen = speechGen;
+  const parts = text.replace(/\s*\n\s*/g, ". ").split(/(?<=[.?!])\s+/).filter(p => p.trim());
+  let i = 0, done = false, safety;
+  const finish = cancelled => {
+    if (done) return;
+    done = true; clearTimeout(safety);
+    if (finishSpeech === finish) finishSpeech = null;
+    onDone(cancelled);
+  };
+  finishSpeech = finish;
+  const next = () => {
+    if (gen !== speechGen) return finish(true);
+    if (i >= parts.length) return finish(false);
+    const u = thaiUtterance(parts[i++]);
+    u.onend = () => setTimeout(next, SENTENCE_PAUSE_MS);
+    u.onerror = () => setTimeout(next, 0);
+    speechSynthesis.speak(u);
+  };
+  // Some browsers never report the end of speech: carry on after a generous estimate.
+  safety = setTimeout(() => finish(false), 4000 + text.length * 140 / RATES[speechRate]);
+  next();
 }
 
 if (canSpeak) {
@@ -262,23 +318,26 @@ function setSpeak(on) {
   speakBtn.textContent = speakOn ? "🔊" : "🔈";
   speakBtn.setAttribute("aria-pressed", speakOn);
   speakBtn.title = speakOn ? "ปิดเสียงตอบกลับ" : "เปิดเสียงตอบกลับ";
-  if (!speakOn && canSpeak) speechSynthesis.cancel();
+  if (!speakOn) cancelSpeech();
   if (speakOn && voiceState === "none") warnNoThaiVoice();
 }
 speakBtn.onclick = () => setSpeak(!speakOn);
+document.querySelectorAll(".rate").forEach(el => { el.onchange = () => setRate(el.value); });
+setRate(speechRate);
+if (!canSpeak) document.querySelectorAll(".rate").forEach(el => { el.hidden = true; });
 
 function speak(reply) {
   if (!speakOn) return;
-  speechSynthesis.cancel();
+  cancelSpeech();
   if (!canSayThai()) {   // no Thai voice: text only, then carry on listening in hands-free mode
     warnNoThaiVoice();
     if (voiceTurn && handsFree && !reply.end && !reply.handoff && Recognition) setTimeout(listen, 600);
     return;
   }
-  const u = thaiUtterance(reply.speech || reply.text);
   // Hands-free: after the bot finishes speaking, listen again, like a phone call.
-  u.onend = () => { if (voiceTurn && handsFree && !reply.end && !reply.handoff && Recognition) listen(); };
-  speechSynthesis.speak(u);
+  speakText(reply.speech || reply.text, cancelled => {
+    if (!cancelled && voiceTurn && handsFree && !reply.end && !reply.handoff && Recognition) listen();
+  });
 }
 
 function setListening(on) {
@@ -292,7 +351,7 @@ function setListening(on) {
 
 function listen() {
   if (listening) return;
-  if (canSpeak) speechSynthesis.cancel();  // the customer can interrupt the bot
+  cancelSpeech();                          // the customer can interrupt the bot
   if (!speakOn) setSpeak(true);            // talking to the bot: it talks back
   recognizer = new Recognition();
   recognizer.lang = "th-TH";
@@ -350,7 +409,7 @@ function micDown(e) {
     warnedInApp = true;
     note("แอปนี้ (เช่น LINE, Facebook) อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้กด ⋮ หรือ ··· แล้วเลือก เปิดในเบราว์เซอร์");
   }
-  micBtn.setPointerCapture?.(e.pointerId);  // release counts even if the finger slides off
+  try { micBtn.setPointerCapture(e.pointerId); } catch { /* not supported: release still works on the button */ }
   pressed = true;
   holding = false;
   handsFree = true;
@@ -397,7 +456,7 @@ function callStatus(text, state = "") { callStatusEl.textContent = text; callScr
 function say(line) {
   return new Promise(resolve => {
     if (!inCall) return resolve();
-    speechSynthesis.cancel();
+    cancelSpeech();
     callCaption.textContent = line.text;
     const text = line.speech || line.text;
     if (!canSayThai()) {   // no Thai voice: show the line and give time to read it
@@ -405,13 +464,8 @@ function say(line) {
       setTimeout(resolve, Math.min(8000, 1500 + line.text.length * 60));
       return;
     }
-    const u = thaiUtterance(text);
-    let timer;
-    const done = () => { clearTimeout(timer); resolve(); };
-    u.onend = done; u.onerror = done;
-    timer = setTimeout(done, 4000 + text.length * 120);  // some browsers never fire onend
     callStatus("ผู้ช่วยกำลังพูด…", "speaking");
-    speechSynthesis.speak(u);
+    speakText(text, () => resolve());
   });
 }
 
@@ -454,7 +508,7 @@ function stopListening() {       // end the current listen; the loop goes round 
 }
 
 function interrupt() {           // stop speaking and listening now
-  speechSynthesis.cancel();
+  cancelSpeech();
   stopListening();
 }
 
@@ -496,12 +550,15 @@ async function runCall() {
   let reply = await call("api/start", {});
   // The bot's own wording tells us its voice: ครับ or ค่ะ/คะ.
   const [p, q] = reply.text.includes("ครับ") ? ["ครับ", "ครับ"] : ["ค่ะ", "คะ"];
-  const menu = (reply.quick_replies || []).filter(x => !x.includes("เจ้าหน้าที่")).join(" ");
-  const invite = ` พูดได้เลย${p} เช่น ${menu} หรือคุยกับเจ้าหน้าที่`;
-  let speech = { text: reply.text + invite, speech: reply.speech + invite };
+  const options = (reply.quick_replies || []).filter(x => !x.includes("เจ้าหน้าที่"));
+  const invite = ` พูดได้เลย${p} เช่น ${options.join(" ")} หรือคุยกับเจ้าหน้าที่`;
+  const spokenInvite = `. พูดได้เลย${p}. เช่น ${options.join(", ")}, หรือคุยกับเจ้าหน้าที่`;
+  let speech = { text: reply.text + invite, speech: reply.speech + spokenInvite };
   let silence = 0;
   add(speech.text, "bot");
-  const line = text => { add(text, "bot"); return { text }; };  // a line the call itself adds
+  // A line the call itself adds: a pause after each sentence, like the bot's own replies.
+  const pauses = t => t.replace(/(ค่ะ|คะ|ครับ) /g, "$1. ").replace(/(?<=[\u0E00-\u0E7F]) (?=[\u0E00-\u0E7F])/g, ", ");
+  const line = text => { add(text, "bot"); return { text, speech: pauses(text) }; };
   while (inCall) {
     showCallReply(reply);
     if (speech) await say(speech);
@@ -548,7 +605,7 @@ async function runCall() {
 async function startCall() {
   if (inCall) return;
   if (listening && recognizer) recognizer.abort();       // stop the chat mic if it was on
-  speechSynthesis.cancel();
+  cancelSpeech();
   speechSynthesis.speak(new SpeechSynthesisUtterance(""));  // iPhone: unlock speech inside the tap
   inCall = true; injected = null; digits = ""; digitsEl.textContent = "";
   setMuted(false); showKeypad(false);
@@ -592,7 +649,7 @@ for (const k of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "ส�
   b.onclick = () => {
     if (k === "⌫") digits = digits.slice(0, -1);
     else if (k === "ส่ง") { if (digits) { inject(digits); digits = ""; } }
-    else { digits += k; speechSynthesis.cancel(); }  // typing interrupts the bot, like a phone menu
+    else { digits += k; cancelSpeech(); }  // typing interrupts the bot, like a phone menu
     digitsEl.textContent = digits;
   };
   keypad.appendChild(b);
