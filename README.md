@@ -192,10 +192,10 @@ It also handles:
 
 - Serve behind HTTPS (nginx, or a cloud load balancer). Add rate limiting.
 - Sessions are kept in memory, so a restart forgets them and they work on one process only.
+  Move them to Redis to run more than one server.
 - The database is a single SQLite file. Back it up, and keep it off the public web root. For many
   agents or servers at once, move the tables to PostgreSQL or MySQL (same columns, same `db.py` calls).
 - The admin password is HTTP Basic auth: serve over HTTPS only, and use a long password.
-  Move them to Redis to run more than one server.
 - PDPA: logs mask phone and ID numbers (`mask_digits`). Add a privacy notice to the chat page,
   and set a retention period for transcripts.
 - Replace the identity check (last 4 ID digits) with whatever your security policy requires,
