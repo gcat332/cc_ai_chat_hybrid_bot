@@ -29,7 +29,8 @@ import hmac
 import logging
 import os
 
-from callcenter_bot import Bot
+from callcenter_bot import Bot, transcripts
+from callcenter_bot.normalize import e164
 from callcenter_bot.privacy import mask_digits
 
 INTENT_CONTINUE = "continue"
@@ -37,7 +38,7 @@ INTENT_HANDOFF = "live-agent-handoff"
 INTENT_END = "end-conversation"
 log = logging.getLogger("genesys")
 
-APOLOGY = "ขออภัยค่ะ ระบบขัดข้อง ขอโอนให้เจ้าหน้าที่นะคะ"
+APOLOGY = "ขออภัยครับ ระบบขัดข้อง ขอโอนให้เจ้าหน้าที่นะครับ"
 
 
 def _response(text: str, state: str, intent: str, parameters: dict = None) -> dict:
@@ -70,21 +71,35 @@ class GenesysConnector:
             received = received[7:]
         return hmac.compare_digest(received.encode(), self.secret.encode())
 
-    def _turn(self, session_id: str, text: str):
-        """One customer turn. Returns (reply, verified_phone). Raises on a bot error.
-        Empty text on a new session greets the customer."""
+    def _turn(self, session_id: str, text: str, ani: str = "", conversation_id: str = ""):
+        """One customer turn. Returns (reply, verified_phone, notes). Raises on a bot error.
+        Empty text on a new session greets the customer. `ani` is the caller's number.
+        notes = {"summary", "transcript"} on handoff (for Genesys); the transcript also goes to the
+        conversation's ServiceNow Interaction."""
         key = "genesys:" + session_id
-        if not text.strip() and key not in self.bot.sessions:
+        if ani and (key not in self.bot.sessions or not self.bot.sessions[key].caller_phone):
+            self.bot.set_caller(key, ani)
+            caller = self.bot.sessions[key].caller_phone
+            log.info("genesys session=%s caller=%s registered=%s", session_id[:8],
+                     ("xxx" + caller[-4:]) if caller else "unreadable", self.bot.is_registered_phone(caller))
+        started = key in self.bot.sessions and self.bot.sessions[key].history
+        if not text.strip() and not started:
             reply = self.bot.welcome()
         else:
             reply = self.bot.reply(key, text)
         session = self.bot.sessions.get(key)
-        verified = session.verified_phone if session else None
+        verified = e164(session.verified_phone) if session and session.verified_phone else None
+        notes = {"summary": "", "transcript": "", **dict.fromkeys(transcripts.PARTICIPANT_FIELDS, "")}
         log.info("genesys session=%s in=%r intent=%s handoff=%s end=%s", session_id[:8],
                  mask_digits(text), reply.intent, reply.handoff, reply.end)
+        if reply.handoff and session:
+            full = transcripts.transcript(session)
+            notes = {"summary": transcripts.summary(session, reply.context.get("request", "")),
+                     "transcript": transcripts.fit(full),
+                     **transcripts.participant_data(session, reply.intent)}
         if reply.handoff or reply.end:
             self.bot.reset(key)
-        return reply, verified
+        return reply, verified, notes
 
     def explain_refusal(self, headers) -> str:
         """Why authorized() said no, for the log. Never includes the secret or what was received."""
@@ -113,7 +128,7 @@ class GenesysConnector:
         reply_format = str(params.get("replyFormat") or self.reply_format)
         text = str(message.get("text") or "")[:1000]
         try:
-            reply, verified = self._turn(session_id, text)
+            reply, verified, notes = self._turn(session_id, text, conversation_id=str(body.get("genesysConversationId") or ""))
         except Exception:
             log.exception("genesys session=%s: bot error", session_id[:8])
             return 200, _response(APOLOGY, "COMPLETE", INTENT_HANDOFF, {"handoffReason": "adapter_error"})
@@ -122,7 +137,11 @@ class GenesysConnector:
         if reply.handoff:
             return 200, _response(say, "COMPLETE", INTENT_HANDOFF,
                                   {"handoffReason": reply.intent, "verifiedPhone": verified,
-                                   "orderId": reply.context.get("order"), "ticket": reply.context.get("ticket")})
+                                   "customerName": reply.context.get("customerName"),
+                                   "requestDetail": reply.context.get("request"), "ticket": reply.context.get("case"),
+                                   "loanDetail": reply.context.get("loan"), "closeReason": reply.context.get("reason"),
+                                   "summary": notes["summary"] or None,
+                                   **{k: notes[k] for k in transcripts.PARTICIPANT_FIELDS if notes[k]}})
         if reply.end:
             return 200, _response(say, "COMPLETE", INTENT_END, {"verifiedPhone": verified})
         return 200, _response(say, "MOREDATA", INTENT_CONTINUE,
@@ -133,9 +152,13 @@ class GenesysConnector:
         and speaks the reply with its own text-to-speech.
 
         request  {"sessionId": Session.ConversationId, "text": what the caller said ("" to start),
-                  "format": "speech" (default) | "text"}
+                  "ani": the caller's number (Call.Ani, optional), "format": "speech" (default) | "text"}
         response {"reply", "action": "continue" | "handoff" | "end", "handoffReason",
-                  "verifiedPhone", "expectsDigits", "orderId", "ticket"}   all strings, flat
+                  "verifiedPhone", "expectsDigits", "customerName", "requestDetail", "ticket",
+                  "loanDetail", "closeReason", "summary", "transcript", and ServiceNow's participant data:
+                  "topic", "identify_type", "kyc_result", "loan_number", "reason", "closing_within_days",
+                  "new_bank_name", "new_interest_rate", "promotion_period_months", "cashback_offered"}   all strings, flat; summary/transcript at most 500 characters
+        On handoff the whole transcript also goes to the conversation's ServiceNow Interaction.
         Returns (http_status, response_json). Bot errors answer 200 + handoff, so the caller is not dropped.
         """
         session_id = str(body.get("sessionId") or "")[:256]
@@ -144,11 +167,13 @@ class GenesysConnector:
         text = str(body.get("text") or "")[:1000]
         reply_format = str(body.get("format") or "speech")
         try:
-            reply, verified = self._turn(session_id, text)
+            reply, verified, notes = self._turn(session_id, text, ani=str(body.get("ani") or ""))
         except Exception:
             log.exception("genesys session=%s: bot error", session_id[:8])
             return 200, {"reply": APOLOGY, "action": "handoff", "handoffReason": "adapter_error",
-                         "verifiedPhone": "", "expectsDigits": "false", "orderId": "", "ticket": ""}
+                         "verifiedPhone": "", "expectsDigits": "false", "customerName": "", "requestDetail": "",
+                         "ticket": "", "loanDetail": "", "closeReason": "", "summary": "", "transcript": "",
+                         **dict.fromkeys(transcripts.PARTICIPANT_FIELDS, ""), "topic": "other"}
         action = "handoff" if reply.handoff else "end" if reply.end else "continue"
         return 200, {
             "reply": reply.speech if reply_format == "speech" else reply.text,
@@ -156,6 +181,14 @@ class GenesysConnector:
             "handoffReason": reply.intent if reply.handoff else "",
             "verifiedPhone": verified or "",
             "expectsDigits": "true" if reply.expects == "digits" else "false",
-            "orderId": reply.context.get("order", ""),       # set on handoff: what the agent should see
-            "ticket": reply.context.get("ticket", ""),
+            # Set on handoff: what the agent should see without asking again.
+            "customerName": reply.context.get("customerName", ""),
+            "requestDetail": reply.context.get("request", ""),
+            "ticket": reply.context.get("case", ""),
+            "loanDetail": reply.context.get("loan", ""),     # the loan a loan request is about
+            "closeReason": reply.context.get("reason", ""),  # why the customer closes it
+            "summary": notes["summary"],             # for Set Participant Data (≤500 characters)
+            "transcript": notes["transcript"],
+            # ServiceNow's participant data (KTB PayOff PoC): set on handoff, "" otherwise
+            **{k: notes[k] for k in transcripts.PARTICIPANT_FIELDS},
         }

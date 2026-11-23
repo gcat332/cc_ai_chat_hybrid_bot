@@ -62,3 +62,17 @@ def digits_only(text: str) -> str:
     """Join digits that customers split with spaces or dashes, or said as words:
     "081-234 5678" -> "0812345678"."""
     return re.sub(r"(?<=\d)[\s\-]+(?=\d)", "", spoken_digits(normalize(text)))
+
+
+def e164(phone: str) -> str:
+    """"0810000002" -> "+66810000002" (how ServiceNow and Genesys write Thai numbers)."""
+    return "+66" + phone[1:] if phone and phone.startswith("0") else (phone or "")
+
+
+def phone_from_ani(ani) -> str:
+    """The caller's number as Genesys gives it ("tel:+66815493626", "+66 81 549 3626") as a Thai
+    phone number ("0815493626"). Empty when there is none."""
+    digits = re.sub(r"\D", "", str(ani or ""))
+    if digits.startswith("66") and len(digits) in (10, 11):
+        digits = "0" + digits[2:]
+    return digits if re.fullmatch(r"0\d{8,9}", digits) else ""

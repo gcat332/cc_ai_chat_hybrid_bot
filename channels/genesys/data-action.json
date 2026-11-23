@@ -1,0 +1,141 @@
+{
+  "name": "Thai Bot Turn",
+  "integrationType": "custom-rest-actions",
+  "actionType": "custom",
+  "config": {
+    "request": {
+      "requestUrlTemplate": "https://YOUR-SERVER/api/genesys/turn",
+      "requestType": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "x-bot-secret": "${credentials.secret}"
+      },
+      "requestTemplate": "{\"sessionId\": \"${input.sessionId}\", \"text\": \"#if($input.text)$esc.jsonEncode($input.text)#end\", \"ani\": \"#if($input.ani)$esc.jsonEncode($input.ani)#end\"}"
+    },
+    "response": {
+      "translationMap": {},
+      "translationMapDefaults": {},
+      "successTemplate": "${rawResult}"
+    }
+  },
+  "contract": {
+    "input": {
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "sessionId"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "Session.ConversationId: one bot conversation per call"
+          },
+          "text": {
+            "type": "string",
+            "description": "What the caller said; empty on the first turn (the bot greets)"
+          },
+          "ani": {
+            "type": "string",
+            "description": "Call.Ani: the caller's number. A registered phone needs only the last 4 ID digits"
+          }
+        }
+      }
+    },
+    "output": {
+      "successSchema": {
+        "type": "object",
+        "properties": {
+          "reply": {
+            "type": "string",
+            "description": "What to say (worded for text-to-speech)"
+          },
+          "action": {
+            "type": "string",
+            "description": "continue | handoff | end"
+          },
+          "handoffReason": {
+            "type": "string",
+            "description": "Why the bot hands over, e.g. loan_close, agent, verify_failed"
+          },
+          "verifiedPhone": {
+            "type": "string",
+            "description": "Registered phone of the verified customer, +66 format (e.g. +66810000002); empty = not verified"
+          },
+          "expectsDigits": {
+            "type": "string",
+            "description": "true while the bot waits for a number"
+          },
+          "customerName": {
+            "type": "string",
+            "description": "Verified customer's name"
+          },
+          "requestDetail": {
+            "type": "string",
+            "description": "What the customer wants, e.g. ปิดบัญชีสินเชื่อบ้าน (สอบถามรายละเอียดก่อน)"
+          },
+          "ticket": {
+            "type": "string",
+            "description": "Case number talked about (the customer's own), e.g. CS0001001"
+          },
+          "loanDetail": {
+            "type": "string",
+            "description": "The loan a loan request is about, e.g. สินเชื่อบ้าน ลงท้าย 4567 คงเหลือ 2,350,000 บาท ดอกเบี้ย 5.25% ..."
+          },
+          "closeReason": {
+            "type": "string",
+            "description": "Why the customer closes the loan, e.g. รีไฟแนนซ์ไปธนาคารอื่น (กสิกรไทย)"
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line for the agent, at most 500 characters"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "End of the conversation, at most 500 characters"
+          },
+          "topic": {
+            "type": "string",
+            "description": "ServiceNow: payoff | homeloan_inquiry | credit_card | deposit | complaint | other"
+          },
+          "identify_type": {
+            "type": "string",
+            "description": "ServiceNow: national_id when verified, else empty"
+          },
+          "kyc_result": {
+            "type": "string",
+            "description": "ServiceNow: pass | fail | empty (not tried)"
+          },
+          "loan_number": {
+            "type": "string",
+            "description": "ServiceNow: the loan the request is about, e.g. PHL-LN-0002"
+          },
+          "reason": {
+            "type": "string",
+            "description": "ServiceNow: why the customer closes the loan: refinance | own_funds | sell_property | high_installment | high_interest | not_given | other"
+          },
+          "closing_within_days": {
+            "type": "string",
+            "description": "ServiceNow: days until the customer must close, e.g. 30"
+          },
+          "new_bank_name": {
+            "type": "string",
+            "description": "ServiceNow: the bank the customer moves to, e.g. ธนาคาร B"
+          },
+          "new_interest_rate": {
+            "type": "string",
+            "description": "ServiceNow: rate the new bank offers, % a year, e.g. 3.25"
+          },
+          "promotion_period_months": {
+            "type": "string",
+            "description": "ServiceNow: the new bank's promotion period in months, e.g. 24"
+          },
+          "cashback_offered": {
+            "type": "string",
+            "description": "ServiceNow: cash back the new bank offers, baht, e.g. 5000"
+          }
+        }
+      }
+    }
+  },
+  "secure": false
+}

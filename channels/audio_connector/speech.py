@@ -14,7 +14,9 @@ log = logging.getLogger("audio_connector.speech")
 
 # Words customers say often: Azure recognises them better when it knows them in advance.
 PHRASES = [
-    "เช็คยอดค้างชำระ", "ยอดค้างชำระ", "ติดตามคำสั่งซื้อ", "ติดตามพัสดุ", "แจ้งปัญหา",
+    "ยอดค้างชำระ", "ยอดชำระขั้นต่ำ", "สินเชื่อบ้าน", "สินเชื่อส่วนบุคคล", "รีไฟแนนซ์",
+    "ปิดบัญชีสินเชื่อ", "บัตรเครดิต", "เพิ่มวงเงิน", "ยกเลิกบัตร", "บัตรหาย", "ยอดเงินในบัญชี",
+    "บัญชีเงินฝาก", "รายการที่ไม่ได้ทำ", "แจ้งปัญหา", "ร้องเรียน", "เลขบัตรประชาชน",
     "คุยกับเจ้าหน้าที่", "ช่องทางชำระเงิน", "เวลาทำการ", "ใช่", "ไม่ใช่", "ยกเลิก",
     "ขอบคุณ", "ลาก่อน", "ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า",
 ]
@@ -30,7 +32,7 @@ class AzureSpeech:
         self.key = key or os.environ.get("AZURE_SPEECH_KEY", "")
         self.region = region or os.environ.get("AZURE_SPEECH_REGION", "southeastasia")
         self.language = language or os.environ.get("AZURE_SPEECH_LANGUAGE", "th-TH")
-        self.voice = voice or os.environ.get("AZURE_SPEECH_VOICE", "th-TH-PremwadeeNeural")
+        self.voice = voice or os.environ.get("AZURE_SPEECH_VOICE", "th-TH-NiwatNeural")   # male: the bot says ครับ
         self.rate = rate or os.environ.get("AZURE_SPEECH_RATE", "0%")   # e.g. "-10%" slower, "+10%" faster
         # Silence that ends the caller's sentence. Thai callers pause inside sentences; 800 ms is safer than 500.
         self.end_of_speech_ms = end_of_speech_ms or int(os.environ.get("AZURE_SPEECH_END_SILENCE_MS", "800"))

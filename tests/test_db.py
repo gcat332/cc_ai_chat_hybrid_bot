@@ -1,10 +1,10 @@
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
-from callcenter_bot import Bot, backend, config, db
+from callcenter_bot import Bot, backend, db, tables
 from callcenter_bot.thai_format import speech_text
-
-# Agent hours are tested in test_bot.ProactiveTest; here a handoff must work at any time of day.
-config.AGENT_HOURS = None
 
 
 class DatabaseTest(unittest.TestCase):
@@ -17,66 +17,74 @@ class DatabaseTest(unittest.TestCase):
 
     def test_seeded_demo_rows(self):
         tables = db.all_tables()
-        self.assertEqual(len(tables["customers"]), 4)
-        self.assertEqual(len(tables["orders"]), 5)
-        self.assertEqual(tables[db.CASE_TABLE], [])
-
-    def test_test_number_0636538939(self):
-        r = self.say("เช็คยอด", "063-653-8939", "8939")
-        self.assertIn("คุณทดสอบ มียอดค้างชำระ 520.75 บาท ครบกำหนดวันที่ 15 ธันวาคม", r.text)
+        self.assertEqual([len(tables[t]) for t in ("customers", "deposit_accounts", "credit_cards", "loans")],
+                         [10, 5, 3, 10])
+        ploysai = backend.find_customer("3294367792962")
+        self.assertEqual((ploysai["title"], ploysai["first_name"], ploysai["last_name"], ploysai["phone"]),
+                         ("นางสาว", "พลอยใส", "ใจดี", "0815493626"))
+        self.assertEqual([c["number"] for c in tables[db.CASE_TABLE]], ["CS0001001"])
+        self.assertEqual(len(tables["faq"]), 46)
 
     def test_bot_reads_what_the_admin_saved(self):
-        db.save_customer({"phone": "091-234-5678", "name": "มานี", "id_last4": "9999",
-                          "balance": "2,000.25", "due_date": "2026-12-31"})
-        r = self.say("เช็คยอด", "0912345678", "9999")
-        self.assertIn("คุณมานี มียอดค้างชำระ 2,000.25 บาท ครบกำหนดวันที่ 31 ธันวาคม", r.text)
+        tables.save("customers", {"national_id": "1-1017-00123-46-4", "title": "นาง", "first_name": "มานี",
+                                  "phone": "091-234-5678"})
+        tables.save("deposit_accounts", {"account_no": "9999999999", "national_id": "1101700123464",
+                                         "account_type": "ออมทรัพย์", "balance": "2,000.25"})
+        r = self.say("ยอดเงินในบัญชี", "1101700123464")
+        self.assertIn("ลงท้าย 9999 คงเหลือ 2,000.25 บาท", r.text)
 
     def test_balance_change_shows_at_once(self):
-        db.save_customer({"phone": "0812345678", "name": "สมชาย", "id_last4": "1234", "balance": 0})
-        self.assertIn("ไม่มียอดค้างชำระ", self.say("เช็คยอด", "0812345678", "1234").text)
-
-    def test_ticket_is_stored(self):
-        r = self.say("อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้าครับ", "ใช่")
-        self.assertIn("เบอร์โทรสำหรับติดต่อกลับ", r.text)        # not verified: where to call back?
-        r = self.say("089-999-9999")
-        case = db.all_tables()[db.CASE_TABLE][0]
-        self.assertIn(case["number"], r.text)
-        self.assertEqual(case["number"], "CS0001001")
-        self.assertRegex(case["sys_id"], r"^[0-9a-f]{32}$")
-        self.assertEqual(case["short_description"], "อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้า")
-        self.assertEqual((case["state"], case["priority"]), (1, 4))          # New, Low
-        self.assertEqual((case["consumer"], case["callback_phone"], case["category"]),
-                         (None, "0899999999", "report_problem"))
-
-    def test_ticket_remembers_verified_phone(self):
-        self.say("เช็คยอด", "0812345678", "1234", "แจ้งปัญหา", "เน็ตหลุดบ่อยมาก", "ใช่")
-        self.assertEqual(db.all_tables()[db.CASE_TABLE][0]["consumer"], "0812345678")
-
-    def test_order_without_date_or_tracking(self):
-        db.save_order({"order_id": "777777", "status": "รอชำระเงิน"})
-        r = self.say("ติดตามพัสดุ", "777777")
-        self.assertEqual(r.text, "คำสั่งซื้อ 777777 รอชำระเงินค่ะ")
-
-    def test_rename_phone_keeps_orders(self):
-        db.save_customer({"phone": "0899999999", "name": "สมชาย", "id_last4": "1234", "balance": 1},
-                         old_phone="0812345678")
-        self.assertEqual(db.query("SELECT phone FROM orders WHERE order_id='123456'")[0]["phone"], "0899999999")
-        self.assertIsNone(backend.find_customer("0812345678"))
+        tables.save("credit_cards", {"outstanding": "0"}, "5412000011112222")
+        self.assertIn("ไม่มียอดค้างชำระ", self.say("ยอดค้างชำระ", "1509900543215").text)
 
     def test_invalid_rows_are_refused_in_thai(self):
         bad = [
-            (db.save_customer, {"phone": "12345", "name": "x", "id_last4": "1234"}, "เบอร์โทร"),
-            (db.save_customer, {"phone": "0812345678", "name": "", "id_last4": "1234"}, "ชื่อ"),
-            (db.save_customer, {"phone": "0812345678", "name": "x", "id_last4": "12"}, "4 ตัวท้าย"),
-            (db.save_customer, {"phone": "0812345678", "name": "x", "id_last4": "1234", "balance": "-5"}, "ติดลบ"),
-            (db.save_customer, {"phone": "0812345678", "name": "x", "id_last4": "1234", "due_date": "5/12/69"}, "วันที่"),
-            (db.save_order, {"order_id": "12", "status": "x"}, "6 หลัก"),
-            (db.save_order, {"order_id": "999999", "status": "x", "phone": "0800000000"}, "ไม่มีลูกค้า"),
+            ("customers", {"national_id": "1234567890123", "first_name": "x"}, "เลขบัตรประชาชน"),
+            ("customers", {"national_id": "1101700123464", "first_name": ""}, "ชื่อ"),
+            ("customers", {"national_id": "1101700123464", "first_name": "x", "phone": "12345"}, "เบอร์โทร"),
+            ("deposit_accounts", {"account_no": "123", "national_id": "3294367792962", "account_type": "x"}, "10 หลัก"),
+            ("deposit_accounts", {"account_no": "1111111111", "national_id": "1101700123464", "account_type": "x"},
+             "ไม่มีลูกค้า"),
+            ("credit_cards", {"card_no": "4532", "national_id": "3294367792962", "card_name": "x"}, "16 หลัก"),
+            ("credit_cards", {"card_no": "4532000000000000", "national_id": "3294367792962", "card_name": "x",
+                              "outstanding": "-5"}, "ติดลบ"),
+            ("loans", {"loan_no": "X1", "national_id": "3294367792962", "loan_type": "x", "next_due_date": "5/12/69"},
+             "วันที่"),
+            ("faq", {"topic": "x", "title": "t", "keywords": "k", "answer": "a", "action": "offer_ticket"}, "handoff"),
         ]
-        for save, row, words in bad:
-            with self.subTest(row=row), self.assertRaises(db.InvalidRow) as e:
-                save(row)
+        for table, row, words in bad:
+            with self.subTest(table=table, row=row), self.assertRaises(tables.Refused) as e:
+                tables.save(table, row)
             self.assertIn(words, str(e.exception))
+
+    def test_shop_demo_database_becomes_the_bank_demo(self):
+        """A database from the first (online shop) demo: dropped and loaded with the bank's rows;
+        its tickets kept as cases."""
+        path = Path(tempfile.mkdtemp()) / "old.db"
+        conn = sqlite3.connect(path)
+        conn.executescript("""
+            CREATE TABLE customers (phone TEXT PRIMARY KEY, name TEXT, id_last4 TEXT, balance REAL, due_date TEXT);
+            CREATE TABLE orders (order_id TEXT PRIMARY KEY, phone TEXT, status TEXT);
+            CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT, description TEXT NOT NULL,
+                                  status TEXT NOT NULL DEFAULT 'รอดำเนินการ', created_at TEXT);
+            INSERT INTO customers VALUES ('0812345678', 'สมชาย', '1234', 0, NULL);
+            INSERT INTO tickets (description) VALUES ('เรื่องเก่า');""")
+        conn.commit()
+        conn.close()
+        db.use_database(str(path))
+        self.assertIsNotNone(backend.find_customer("3294367792962"))
+        self.assertFalse(db.query("SELECT 1 FROM sqlite_master WHERE name IN ('orders', 'tickets')"))
+        numbers = {c["number"]: c["short_description"] for c in db.all_tables()[db.CASE_TABLE]}
+        self.assertEqual(numbers["CS0001001"], "เรื่องเก่า")          # the old ticket kept its number
+        db.use_database(":memory:")
+
+    def test_rows_saved_in_the_browser_come_back(self):
+        saved = db.export_rows()
+        tables.delete("loans", "HL6201234567")
+        db.import_rows(saved)
+        self.assertEqual(len(db.all_tables()["loans"]), 10)
+        db.import_rows({"customers": [{"phone": "0812345678"}]})     # the shop demo's rows: ignored
+        self.assertEqual(len(db.all_tables()["customers"]), 10)
 
 
 class SpeechTextTest(unittest.TestCase):
@@ -109,9 +117,7 @@ class SpeechTextTest(unittest.TestCase):
 
     def test_every_reply_has_speech(self):
         db.use_database(":memory:")
-        r = Bot().reply("s", "เช็คยอด 0812345678")
-        self.assertTrue(r.speech)
-        self.assertNotIn("0812345678", Bot().reply("t", "เช็คยอด").speech)
+        self.assertTrue(Bot().reply("s", "ยอดค้างชำระ").speech)
 
 
 if __name__ == "__main__":

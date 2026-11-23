@@ -60,7 +60,7 @@
   <div id="banner" hidden></div>
   <div class="bar">
     <div class="tabs" role="tablist" id="tabs"></div>
-    <input id="search" type="search" placeholder="ค้นหา เช่น เบอร์ ชื่อ เลขคำสั่งซื้อ" aria-label="ค้นหา">
+    <input id="search" type="search" placeholder="ค้นหา เช่น ชื่อ เลขบัตร เลขบัญชี" aria-label="ค้นหา">
     <button class="btn ghost" id="refresh" type="button" title="โหลดข้อมูลใหม่">โหลดใหม่</button>
     <button class="btn" id="addBtn" type="button">เพิ่ม</button>
   </div>
@@ -94,45 +94,80 @@ const phoneFmt = p => !p ? "" : p.length === 10 ? `${p.slice(0, 3)}-${p.slice(3,
 const CASE_STATES = [[1, "New - รับเรื่องแล้ว"], [10, "Open - กำลังดำเนินการ"], [18, "Awaiting Info - รอข้อมูลลูกค้า"],
                      [6, "Resolved - แก้ไขแล้ว"], [3, "Closed - ปิดเรื่อง"], [7, "Cancelled - ยกเลิก"]];
 const caseState = v => (CASE_STATES.find(([k]) => String(k) === String(v)) || [v, String(v)])[1];
-const ORDER_STATUSES = ["รอชำระเงิน", "กำลังเตรียมสินค้า", "กำลังจัดส่ง", "จัดส่งสำเร็จแล้ว", "ยกเลิกแล้ว"];
+const idFmt = v => !v ? "" : String(v).replace(/^(\d)(\d{4})(\d{5})(\d{2})(\d)$/, "$1-$2-$3-$4-$5");
+const last4 = v => v ? "•••• " + String(v).slice(-4) : "";
+const statusPill = v => `<span class="pill ${v === "ปกติ" ? "done" : "due"}">${esc(v)}</span>`;
+const PRODUCT_STATUSES = ["ปกติ", "ระงับ", "ปิดแล้ว"];
 
 // What each table shows and lets you edit. `show` formats a cell; `edit: false` is read-only.
+// The full editor for every table is the data page: python -m dataadmin.
 const TABLES = {
   customers: {
-    title: "ลูกค้า", key: "phone", canAdd: true,
+    title: "ลูกค้า", key: "national_id", canAdd: true,
     cols: [
-      { f: "phone", label: "เบอร์โทร", show: phoneFmt, input: { type: "tel", inputmode: "numeric", placeholder: "0812345678" } },
-      { f: "name", label: "ชื่อ" },
-      { f: "id_last4", label: "เลขบัตร 4 ตัวท้าย", input: { inputmode: "numeric", maxlength: 4 },
-        hint: "ใช้ยืนยันตัวตนตอนเช็คยอด" },
-      { f: "balance", label: "ยอดค้างชำระ (บาท)", num: true, show: money,
-        input: { type: "number", step: "0.01", min: "0" } },
-      { f: "due_date", label: "ครบกำหนดชำระ", input: { type: "date" },
-        show: (v, r) => v ? `<span class="pill ${r.balance > 0 ? "due" : ""}">${thaiDate(v)}</span>` : "–", html: true },
+      { f: "national_id", label: "เลขบัตรประชาชน", show: idFmt, input: { inputmode: "numeric", maxlength: 17 },
+        hint: "13 หลัก ใช้ยืนยันตัวตนกับบอท" },
+      { f: "title", label: "คำนำหน้า", options: ["นาย", "นาง", "นางสาว"], free: true },
+      { f: "first_name", label: "ชื่อ" },
+      { f: "last_name", label: "นามสกุล" },
+      { f: "phone", label: "เบอร์โทร", show: phoneFmt, input: { type: "tel", inputmode: "numeric" } },
+      { f: "segment", label: "กลุ่มลูกค้า", options: ["Mass", "Wealth"], free: true },
     ],
   },
-  orders: {
-    title: "คำสั่งซื้อ", key: "order_id", canAdd: true,
+  customer_phones: {
+    title: "เบอร์โทรเพิ่มเติม", key: "phone", canAdd: true,
     cols: [
-      { f: "order_id", label: "เลขคำสั่งซื้อ", input: { inputmode: "numeric", maxlength: 6, placeholder: "123456" } },
-      { f: "phone", label: "เบอร์ลูกค้า", show: phoneFmt, input: { type: "tel", inputmode: "numeric" },
-        hint: "ต้องมีในตารางลูกค้า (เว้นว่างได้)" },
-      { f: "status", label: "สถานะ", options: ORDER_STATUSES, free: true,
-        show: v => `<span class="pill ${v.startsWith("จัดส่งสำเร็จ") ? "done" : ""}">${esc(v)}</span>`, html: true },
-      { f: "carrier", label: "ขนส่ง" },
-      { f: "tracking", label: "เลขพัสดุ" },
-      { f: "eta", label: "วันที่ได้รับ / คาดว่าจะได้รับ", input: { type: "date" }, show: thaiDate },
+      { f: "phone", label: "เบอร์โทร", show: phoneFmt, input: { type: "tel", inputmode: "numeric" },
+        hint: "เบอร์อื่นที่ลูกค้าใช้โทรเข้า ยืนยันตัวตนด้วยเลขบัตร 4 ตัวท้ายได้" },
+      { f: "national_id", label: "เลขบัตรเจ้าของเบอร์", show: idFmt, input: { inputmode: "numeric" } },
+      { f: "note", label: "หมายเหตุ" },
+    ],
+  },
+  deposit_accounts: {
+    title: "บัญชีเงินฝาก", key: "account_no", canAdd: true,
+    cols: [
+      { f: "account_no", label: "เลขบัญชี", input: { inputmode: "numeric", maxlength: 10 } },
+      { f: "national_id", label: "เลขบัตรเจ้าของ", show: idFmt, input: { inputmode: "numeric" } },
+      { f: "account_type", label: "ประเภท", options: ["ออมทรัพย์", "ฝากประจำ", "กระแสรายวัน"], free: true },
+      { f: "balance", label: "ยอดเงิน (บาท)", num: true, show: money, input: { type: "number", step: "0.01" } },
+      { f: "status", label: "สถานะ", options: PRODUCT_STATUSES, free: true, show: statusPill, html: true },
+    ],
+  },
+  credit_cards: {
+    title: "บัตรเครดิต", key: "card_no", canAdd: true,
+    cols: [
+      { f: "card_no", label: "เลขบัตร", show: last4, input: { inputmode: "numeric", maxlength: 16 } },
+      { f: "national_id", label: "เลขบัตรเจ้าของ", show: idFmt, input: { inputmode: "numeric" } },
+      { f: "card_name", label: "ชื่อบัตร" },
+      { f: "credit_limit", label: "วงเงิน", num: true, show: money, input: { type: "number", step: "0.01", min: "0" } },
+      { f: "available_credit", label: "วงเงินคงเหลือ", num: true, show: money, input: { type: "number", step: "0.01" } },
+      { f: "outstanding", label: "ยอดค้างชำระ", num: true, show: money, input: { type: "number", step: "0.01", min: "0" } },
+      { f: "minimum_due", label: "ขั้นต่ำ", num: true, show: money, input: { type: "number", step: "0.01", min: "0" } },
+      { f: "due_date", label: "ครบกำหนด", input: { type: "date" }, show: thaiDate },
+      { f: "status", label: "สถานะ", options: PRODUCT_STATUSES, free: true, show: statusPill, html: true },
+    ],
+  },
+  loans: {
+    title: "สินเชื่อ", key: "loan_no", canAdd: true,
+    cols: [
+      { f: "loan_no", label: "เลขที่สัญญา" },
+      { f: "national_id", label: "เลขบัตรเจ้าของ", show: idFmt, input: { inputmode: "numeric" } },
+      { f: "loan_type", label: "ประเภท", options: ["สินเชื่อบ้าน", "สินเชื่อส่วนบุคคล"], free: true },
+      { f: "outstanding_principal", label: "ยอดหนี้คงเหลือ", num: true, show: money, input: { type: "number", step: "0.01", min: "0" } },
+      { f: "interest_rate", label: "ดอกเบี้ย (%/ปี)", num: true, input: { type: "number", step: "0.01" } },
+      { f: "monthly_installment", label: "ค่างวด", num: true, show: money, input: { type: "number", step: "0.01", min: "0" } },
+      { f: "next_due_date", label: "ครบกำหนด", input: { type: "date" }, show: thaiDate },
+      { f: "remaining_months", label: "งวดที่เหลือ", num: true, input: { type: "number", min: "0" } },
+      { f: "status", label: "สถานะ", options: PRODUCT_STATUSES, free: true, show: statusPill, html: true },
     ],
   },
   sn_customerservice_case: {
-    title: "เรื่องที่แจ้ง", key: "sys_id", canAdd: false,
+    title: "เรื่องที่แจ้ง (Case)", key: "sys_id", canAdd: false,
     cols: [
       { f: "number", label: "เลขเคส", edit: false },
       { f: "opened_at", label: "วันที่เปิดเคส", edit: false, show: thaiDate },
-      { f: "consumer", label: "เบอร์ (ยืนยันตัวตนแล้ว)", edit: false, show: v => phoneFmt(v) || "–" },
-      { f: "callback_phone", label: "เบอร์ติดต่อกลับ", edit: false, show: v => phoneFmt(v) || "–" },
+      { f: "consumer", label: "เลขบัตรลูกค้า", edit: false, show: v => idFmt(v) || "–" },
       { f: "category", label: "ประเภท", edit: false },
-      { f: "order_id", label: "คำสั่งซื้อ", edit: false },
       { f: "short_description", label: "หัวเรื่อง", edit: false, wrap: true },
       { f: "state", label: "สถานะ", options: CASE_STATES,
         show: v => `<span class="pill ${[6, 3, 7].includes(Number(v)) ? "done" : Number(v) === 1 ? "due" : ""}">${esc(caseState(v))}</span>`, html: true },
@@ -216,7 +251,7 @@ function openForm(row) {
 $("form").onsubmit = async e => {
   e.preventDefault();
   const t = TABLES[current], row = {};
-  for (const el of $("fields").querySelectorAll("input, select")) if (el.name) row[el.name] = el.value;
+  for (const el of $("fields").querySelectorAll("input, select")) if (el.name && !el.disabled) row[el.name] = el.value;
   try {
     await runtime.save(current, row, editing ? editing[t.key] : null);
     $("dialog").close();

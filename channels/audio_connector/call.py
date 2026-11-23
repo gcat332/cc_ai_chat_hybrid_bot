@@ -15,12 +15,12 @@ Like the web page's call mode:
 import asyncio
 import json
 import logging
-import re
 import time
 from collections import deque
 from dataclasses import dataclass
 
-from callcenter_bot import Bot, config
+from callcenter_bot import Bot, config, transcripts
+from callcenter_bot.normalize import e164
 from callcenter_bot.privacy import mask_digits
 from callcenter_bot.thai_format import speech_text
 
@@ -28,9 +28,9 @@ from . import protocol
 
 log = logging.getLogger("audio_connector")
 P, Q = config.STATEMENT_PARTICLE, config.QUESTION_PARTICLE
-TOPICS = {"check_balance", "order_status", "report_problem", "ticket_created", "payment_channels", "hours",
-          "ticket_status", "order_cancel", "order_change_address", "order_late", "order_not_received",
-          "order_return"}
+TOPICS = {"balance_due", "loan_info", "card_info", "deposit_balance", "case_status", "payment_channels", "hours",
+          "loan_close", "card_apply", "card_limit", "card_cancel", "transaction_help", "complaint",
+          "card_lost", "unauthorized"}
 
 
 @dataclass
@@ -69,7 +69,9 @@ class CallSession:
         self.dtmf_task = None
         self.tasks = []
         # What Architect gets back
-        self.outcome = {"intent": "", "handoffReason": "", "verifiedPhone": "", "ticket": "", "orderId": "",
+        self.outcome = {"intent": "", "handoffReason": "", "verifiedPhone": "", "ticket": "",
+                        "customerName": "", "requestDetail": "", "loanDetail": "", "closeReason": "",
+                        "summary": "", "transcript": "",
                         "topics": "", "lastCustomerText": "", "turns": "0", "ani": ""}
         self.topics = []
 
@@ -122,8 +124,10 @@ class CallSession:
             self.running = False
             return
         await self._send(self.proto.opened([media]))
-        self.key = "genesys-call:" + str(params.get("conversationId") or self.proto.session_id)
+        self.conversation_id = str(params.get("conversationId") or self.proto.session_id)
+        self.key = "genesys-call:" + self.conversation_id
         self.outcome["ani"] = (params.get("participant") or {}).get("ani", "")
+        self.bot.set_caller(self.key, self.outcome["ani"])   # registered phone: 4 ID digits are enough
         log.info("call %s: opened", self._tag())
         self.recognizer = self.speech.make_recognizer(self.loop, self._on_speech)
         self.tasks = [asyncio.create_task(t) for t in (self._send_audio(), self._answer_turns(), self._watch_silence())]
@@ -223,13 +227,17 @@ class CallSession:
         self.outcome["lastCustomerText"] = mask_digits(text)
         session = self.bot.sessions.get(self.key)
         if session and session.verified_phone:
-            self.outcome["verifiedPhone"] = session.verified_phone
-        if session:   # the order and ticket talked about, for the agent
-            self.outcome["orderId"] = session.context.get("order", self.outcome["orderId"])
-            self.outcome["ticket"] = session.context.get("ticket", self.outcome["ticket"])
-        ticket = re.search(r"\b(?:CS|TK)\d+", reply.text)
-        if reply.intent == "ticket_created" and ticket:
-            self.outcome["ticket"] = ticket.group()
+            self.outcome["verifiedPhone"] = e164(session.verified_phone)
+        if session:   # who the caller is and what they want, for the agent
+            self.outcome["customerName"] = session.customer_name or self.outcome["customerName"]
+            self.outcome["requestDetail"] = session.context.get("request", self.outcome["requestDetail"])
+            self.outcome["ticket"] = session.context.get("case", self.outcome["ticket"])
+        if reply.handoff:     # the session may be gone after a handoff: take it from the reply
+            self.outcome["customerName"] = reply.context.get("customerName", self.outcome["customerName"])
+            self.outcome["requestDetail"] = reply.context.get("request", self.outcome["requestDetail"])
+            self.outcome["ticket"] = reply.context.get("case", self.outcome["ticket"])
+            self.outcome["loanDetail"] = reply.context.get("loan", self.outcome["loanDetail"])
+            self.outcome["closeReason"] = reply.context.get("reason", self.outcome["closeReason"])
         if reply.intent in TOPICS and reply.intent not in self.topics:
             self.topics.append(reply.intent)
 
@@ -288,6 +296,12 @@ class CallSession:
         self.disconnecting = True
         self.outcome["intent"] = intent
         self.outcome["handoffReason"] = reason or ""
+        session = self.bot.sessions.get(self.key)
+        if intent == "live-agent-handoff" and session:      # what the agent and ServiceNow get
+            full = transcripts.transcript(session)
+            self.outcome["summary"] = transcripts.summary(session, self.outcome["requestDetail"])
+            self.outcome["transcript"] = transcripts.fit(full)
+            self.outcome.update(transcripts.participant_data(session, reason or ""))
         if speak:
             try:
                 await self._speak(speak)

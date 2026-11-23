@@ -8,7 +8,7 @@ API (the pages in static/ use it; your own website or app can call it too):
     POST /api/start  {"session_id": "..."}                    -> welcome Reply
     GET  /api/health                                         -> {"ok": true}
 
-Admin page for the tables (customers, orders, tickets): /admin
+Admin page for the bank tables (customers, accounts, cards, loans, cases): /admin. All tables: python -m dataadmin
     Needs a password: set ADMIN_PASSWORD before starting. The browser asks for it
     (user name: admin). Without ADMIN_PASSWORD the admin page is switched off.
     GET  /api/admin/tables                                   -> all rows

@@ -85,42 +85,59 @@
 <script>
 // What each table and column means. Tables or columns not listed still show, with their raw names.
 const TABLES = {
-  customers: { title: "ลูกค้า", note: "ใช้ยืนยันตัวตนและเช็คยอดค้างชำระ" },
-  orders: { title: "คำสั่งซื้อ", note: "ใช้ติดตามพัสดุ ยกเลิก เปลี่ยนที่อยู่ และคืนสินค้า วันที่คาดว่าจะได้รับที่ผ่านไปแล้วทำให้บอทเสนอเปิดเรื่องพัสดุล่าช้า" },
+  customers: { title: "ลูกค้า", note: "ลูกค้ายืนยันตัวตนกับบอทด้วยเลขบัตรประชาชน 13 หลัก (ต้องผ่านหลักตรวจสอบ) ข้อมูลตัวอย่างเท่านั้น" },
+  customer_phones: { title: "เบอร์โทรเพิ่มเติม",
+    note: "เบอร์อื่นที่ลูกค้าใช้โทรเข้า (นอกจากเบอร์หลักในตารางลูกค้า) โทรจากเบอร์เหล่านี้ยืนยันตัวตนด้วยเลขบัตร 4 ตัวท้ายได้ หนึ่งเบอร์เป็นของลูกค้าได้คนเดียว" },
+  deposit_accounts: { title: "บัญชีเงินฝาก", note: "บอทตอบยอดเงินคงเหลือให้ลูกค้าที่ยืนยันตัวตนแล้ว (บอกเลขบัญชีแค่ 4 ตัวท้าย)" },
+  credit_cards: { title: "บัตรเครดิต", note: "บอทตอบวงเงิน ยอดค้างชำระ ยอดขั้นต่ำ และวันครบกำหนด (บอกเลขบัตรแค่ 4 ตัวท้าย)" },
+  loans: { title: "สินเชื่อ", note: "บอทตอบยอดหนี้ ดอกเบี้ย ค่างวด และงวดที่เหลือ คำขอปิดบัญชีหรือรีไฟแนนซ์โอนให้เจ้าหน้าที่เสมอ" },
   sn_customerservice_case: { title: "เรื่องที่แจ้ง (Case)",
-    note: "รูปแบบเดียวกับตาราง Case ของ ServiceNow (sn_customerservice_case) บอทเปิดเคสเมื่อลูกค้าแจ้งปัญหาหรือขอให้ติดต่อกลับ ลูกค้าเช็คสถานะด้วยเลข CS ได้ เมื่อเชื่อม ServiceNow จริง เคสจะไปอยู่ใน ServiceNow แทนตารางนี้" },
+    note: "รูปแบบเดียวกับตาราง Case ของ ServiceNow (sn_customerservice_case) เจ้าหน้าที่เป็นคนเปิดเคส บอทไม่เปิดเอง ลูกค้าที่ยืนยันตัวตนแล้วถามสถานะเคสของตัวเองด้วยเลข CS ได้ (consumer ต้องเป็นเลขบัตรของลูกค้า)" },
   faq: { title: "คำถามที่พบบ่อย (FAQ)", warn: true,
          note: "บอทตอบจากตารางนี้ทันทีที่บันทึก คำตอบตั้งต้นเป็นข้อความตัวอย่าง ต้องแก้ให้ตรงนโยบายจริงก่อนใช้งาน" },
+  verify_failures: { title: "ยืนยันตัวตนไม่ผ่าน",
+    note: "บันทึกทุกครั้งที่ยืนยันตัวตนไม่ผ่าน ถ้าเลขบัตรเดียวกันผิดครบ 3 ครั้งภายใน 30 นาที (จากสายหรือแชทไหนก็ได้) บอทจะไม่ยืนยันเลขนั้นชั่วคราวและโอนเจ้าหน้าที่ ลบแถวเพื่อปลดล็อก" },
 };
+const PRODUCT_STATUS = { label: "สถานะ", list: ["ปกติ", "ระงับ", "ปิดแล้ว"] };
 const COLS = {
-  phone: { label: "เบอร์โทร" }, name: { label: "ชื่อ" },
-  id_last4: { label: "เลขบัตร 4 ตัวท้าย", hint: "ใช้ยืนยันตัวตน" },
-  balance: { label: "ยอดค้างชำระ (บาท)" }, due_date: { label: "วันครบกำหนด", date: true },
-  order_id: { label: "เลขคำสั่งซื้อ", hint: "ตัวเลข 6 หลัก" },
-  status: { label: "สถานะ", list: ["รอชำระเงิน", "กำลังเตรียมสินค้า", "กำลังจัดส่ง", "จัดส่งสำเร็จแล้ว", "ยกเลิกแล้ว",
-                                   "รอดำเนินการ", "กำลังดำเนินการ", "เสร็จสิ้น"] },
-  carrier: { label: "ขนส่ง" }, tracking: { label: "เลขพัสดุ" },
-  eta: { label: "วันที่ได้รับ / คาดว่าจะได้รับ", date: true },
+  national_id: { label: "เลขบัตรประชาชน", hint: "13 หลัก" }, title: { label: "คำนำหน้า", list: ["นาย", "นาง", "นางสาว"] },
+  first_name: { label: "ชื่อ" }, last_name: { label: "นามสกุล" }, phone: { label: "เบอร์โทร" },
+  segment: { label: "กลุ่มลูกค้า", list: ["Mass", "Wealth"] },
+  account_no: { label: "เลขบัญชี", hint: "10 หลัก" }, account_type: { label: "ประเภทบัญชี", list: ["ออมทรัพย์", "ฝากประจำ", "กระแสรายวัน"] },
+  balance: { label: "ยอดเงิน (บาท)" }, status: PRODUCT_STATUS,
+  card_no: { label: "เลขบัตรเครดิต", hint: "16 หลัก" }, card_name: { label: "ชื่อบัตร" },
+  credit_limit: { label: "วงเงิน" }, available_credit: { label: "วงเงินคงเหลือ" }, outstanding: { label: "ยอดค้างชำระ" },
+  minimum_due: { label: "ยอดชำระขั้นต่ำ" }, due_date: { label: "วันครบกำหนด", date: true },
+  loan_no: { label: "เลขที่สัญญา" }, loan_type: { label: "ประเภทสินเชื่อ", list: ["สินเชื่อบ้าน", "สินเชื่อส่วนบุคคล"] },
+  outstanding_principal: { label: "ยอดหนี้คงเหลือ" }, interest_rate: { label: "ดอกเบี้ย (% ต่อปี)" },
+  monthly_installment: { label: "ค่างวด" }, next_due_date: { label: "ครบกำหนดงวดถัดไป", date: true },
+  remaining_months: { label: "งวดที่เหลือ" },
   description: { label: "รายละเอียด", long: true }, category: { label: "ประเภท (category)" },
   sys_id: { label: "sys_id", readonly: true }, number: { label: "เลขเคส", readonly: true, hint: "ระบบออกเลขให้ เช่น CS0001001" },
   short_description: { label: "หัวเรื่อง (short_description)" },
   priority: { label: "ความสำคัญ (priority)", options: { 1: "1 - Critical", 2: "2 - High", 3: "3 - Moderate", 4: "4 - Low" } },
   contact_type: { label: "ช่องทาง (contact_type)", list: ["phone", "web", "chat", "email"] },
-  consumer: { label: "เบอร์ลูกค้า (ยืนยันตัวตนแล้ว)", hint: "ใน ServiceNow คือ consumer (อ้างถึงระเบียนลูกค้า)" },
+  consumer: { label: "เลขบัตรลูกค้า (consumer)", hint: "เลขบัตรประชาชนของเจ้าของเคส ใน ServiceNow คือ consumer" },
   close_notes: { label: "บันทึกการแก้ไข (close_notes)", long: true }, opened_at: { label: "วันที่เปิดเคส", readonly: true },
-  callback_phone: { label: "เบอร์ติดต่อกลับ", hint: "ลูกค้าที่ไม่ได้ยืนยันตัวตนให้ไว้" },
+  callback_phone: { label: "เบอร์ติดต่อกลับ" }, order_id: { label: "เลขอ้างอิง" },
   topic: { label: "รหัสหัวข้อ", hint: "อังกฤษพิมพ์เล็กและ _ เช่น late_fee ใช้เป็นเหตุผลการโอนด้วย" },
-  title: { label: "หัวข้อ" },
+  identity: { label: "เลขบัตรที่ลอง" }, failed_at: { label: "เวลาที่ผิด" },
   keywords: { label: "คำที่ลูกค้าพูด", long: true, hint: "คั่นด้วยเครื่องหมายจุลภาค (,) ไม่ต้องเว้นวรรคในคำ" },
   answer: { label: "คำตอบ", long: true, hint: "ประโยคที่บอทพูด เขียนให้อ่านออกเสียงได้" },
-  action: { label: "หลังตอบ", options: { answer: "ตอบอย่างเดียว", offer_ticket: "ตอบแล้วเสนอเปิดเรื่อง", handoff: "ตอบแล้วโอนเจ้าหน้าที่" } },
+  action: { label: "หลังตอบ", options: { answer: "ตอบอย่างเดียว", handoff: "ยืนยันตัวตนแล้วโอนเจ้าหน้าที่" } },
 };
 // Labels that differ per table.
 const TABLE_COLS = {
   sn_customerservice_case: { state: { label: "สถานะ (state)", options: {
     1: "New - รับเรื่องแล้ว", 10: "Open - กำลังดำเนินการ", 18: "Awaiting Info - รอข้อมูลลูกค้า",
     6: "Resolved - แก้ไขแล้ว", 3: "Closed - ปิดเรื่อง", 7: "Cancelled - ยกเลิก" } } },
-  orders: { phone: { label: "เบอร์ลูกค้า", hint: "ต้องมีในตารางลูกค้า (เว้นว่างได้)" } } };
+  faq: { title: { label: "หัวข้อ" } },
+  customer_phones: { phone: { label: "เบอร์โทร", hint: "ตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0" },
+                     national_id: { label: "เลขบัตรเจ้าของเบอร์", hint: "ต้องมีในตารางลูกค้า" }, note: { label: "หมายเหตุ" } },
+  deposit_accounts: { national_id: { label: "เลขบัตรเจ้าของบัญชี", hint: "ต้องมีในตารางลูกค้า" } },
+  credit_cards: { national_id: { label: "เลขบัตรเจ้าของบัตร", hint: "ต้องมีในตารางลูกค้า" } },
+  loans: { national_id: { label: "เลขบัตรผู้กู้", hint: "ต้องมีในตารางลูกค้า" } },
+};
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -129,8 +146,8 @@ let tables = [], current = "customers", editing = null;
 const colInfo = (table, name) => ({ label: name, ...(COLS[name] || {}), ...((TABLE_COLS[table] || {})[name] || {}) });
 const tableOf = name => tables.find(t => t.name === name);
 // Column order on screen (the rest follow); the table itself keeps ServiceNow's field order.
-const FIRST = { sn_customerservice_case: ["number", "state", "short_description", "category", "contact_type", "consumer",
-                                          "callback_phone", "order_id", "opened_at", "priority", "close_notes", "description"] };
+const FIRST = { sn_customerservice_case: ["number", "state", "short_description", "category", "consumer", "contact_type",
+                                          "opened_at", "priority", "close_notes", "description"] };
 const shownColumns = t => {
   const first = (FIRST[t.name] || []).map(n => t.columns.find(c => c.name === n)).filter(Boolean);
   return [...first, ...t.columns.filter(c => !first.includes(c))];
@@ -163,9 +180,11 @@ async function load() {
 function show(table, col, value) {
   if (value === null || value === undefined || value === "") return '<span class="empty-cell">–</span>';
   if (col === "sys_id") return `<span title="${esc(value)}">${esc(String(value).slice(0, 8))}…</span>`;
-  if (["number", "phone", "consumer", "callback_phone", "order_id", "due_date", "eta", "opened_at"].includes(col))
+  if (["number", "phone", "consumer", "national_id", "identity", "account_no", "card_no", "loan_no", "callback_phone",
+       "due_date", "next_due_date", "opened_at", "failed_at"].includes(col))
     return `<span class="nowrap">${esc(value)}</span>`;
-  if (col === "balance") return Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+  if (["balance", "credit_limit", "available_credit", "outstanding", "minimum_due", "outstanding_principal",
+       "monthly_installment"].includes(col)) return Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2 });
   if (col === "status" || col === "action" || col === "category" || col === "state" || col === "priority") {
     const opts = colInfo(table, col).options;
     return `<span class="pill">${esc(opts?.[value] || value)}</span>`;

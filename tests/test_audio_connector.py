@@ -21,7 +21,7 @@ except ImportError:   # the voice extra is optional
 
 from callcenter_bot import Bot, config, db
 
-# Agent hours are tested in test_bot.ProactiveTest; here a handoff must work at any time of day.
+# Agent hours are tested in test_bot.RequestTest; here a handoff must work at any time of day.
 config.AGENT_HOURS = None
 
 KEY = "test-key"
@@ -112,31 +112,32 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         opened = await g.open()
         self.assertEqual(opened["parameters"]["media"][0]["format"], "PCMU")
         greeting = await g.hear()
-        self.assertTrue(greeting.startswith("สวัสดีค่ะ."), greeting)
-        self.assertIn("มีอะไรให้ช่วยคะ", greeting)
-        self.assertNotIn("เช่น", greeting)                              # no examples
+        self.assertTrue(greeting.startswith("สวัสดีครับ."), greeting)
+        self.assertIn("ต้องการติดต่อเรื่องใดครับ", greeting)
 
-        await g.say("อยากเช็คยอดค้างชำระครับ")
-        asks_phone = await g.hear()
-        self.assertIn("เบอร์โทรศัพท์", asks_phone)
-        self.assertIn("พูดหรือกดตัวเลขก็ได้", asks_phone)          # keypad hint while a number is due
+        await g.say("อยากทราบยอดค้างชำระครับ")
+        asks_id = await g.hear()
+        self.assertIn("เลขบัตรประชาชน 4 ตัวท้าย", asks_id)          # calling from the registered phone
+        self.assertIn("พูดหรือกดตัวเลขก็ได้", asks_id)             # keypad hint while a number is due
 
-        await g.press("0636538939#")                              # typed on the keypad
-        self.assertIn("4 ตัวท้าย", await g.hear())
+        await g.press("3215#")                                    # typed on the keypad
+        balance = await g.hear()
+        self.assertIn("ขอบคุณครับคุณทดสอบ", balance)
+        self.assertIn("520 บาท 75 สตางค์", balance)
 
-        await g.say("แปด เก้า สาม เก้า")                           # spoken as words
-        self.assertIn("520 บาท 75 สตางค์", await g.hear())
-
-        await g.say("ขอคุยกับเจ้าหน้าที่ค่ะ")
-        self.assertIn("โอนให้เจ้าหน้าที่", await g.hear())
+        await g.say("ขอคุยกับเจ้าหน้าที่ครับ")
+        self.assertIn("กรุณารอสักครู่", await g.hear())
         out = (await g.message("disconnect"))["parameters"]
         self.assertEqual(out["reason"], "completed")
         v = out["outputVariables"]
-        self.assertEqual((v["intent"], v["handoffReason"], v["verifiedPhone"]),
-                         ("live-agent-handoff", "agent", "0636538939"))
-        self.assertEqual(v["topics"], "check_balance")
+        self.assertEqual((v["intent"], v["handoffReason"], v["verifiedPhone"], v["customerName"]),
+                         ("live-agent-handoff", "agent", "+66636538939", "นายทดสอบ ระบบ"))
+        self.assertEqual(v["topics"], "balance_due")
+        self.assertEqual(v["summary"], "ยืนยันตัวตนแล้ว (เบอร์ที่โทรเข้า + เลขบัตร 4 ตัวท้าย) | ถามเรื่อง: ยอดค้างชำระ")
+        self.assertIn("ลูกค้า: อยากทราบยอดค้างชำระ", v["transcript"])
+        self.assertNotIn("3215", v["transcript"])                  # the ID digits are masked
         self.assertEqual(v["ani"], "+66636538939")
-        self.assertEqual(v["turns"], "4")
+        self.assertEqual(v["turns"], "3")
 
         await g.send("close", reason="end")                       # Genesys closes; we confirm
         closed = await g.message("closed")
@@ -146,31 +147,42 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await self.start()
         g = await self.call()
         await g.open(); await g.hear()
-        await g.say("ติดตามพัสดุ")
+        await g.say("ยอดเงินในบัญชีเหลือเท่าไหร่")
         await g.hear()
-        await g.press("636538")                                   # no "#"
-        self.assertIn("ไปรษณีย์ไทย", await g.hear())
+        await g.press("1509900543215")                            # no "#"
+        self.assertIn("5200 บาท", await g.hear())
 
-    async def test_report_problem_ticket_goes_to_agent_data(self):
+    async def test_lost_card_goes_to_an_agent_with_the_request(self):
         await self.start()
         g = await self.call()
         await g.open(); await g.hear()
-        await g.say("อินเทอร์เน็ตใช้ไม่ได้ตั้งแต่เช้าครับ")
+        await g.say("บัตรเครดิตหายครับ")
+        self.assertIn("เลขบัตรประชาชน", await g.hear())               # urgent: no "ถูกต้องไหม", verify at once
+        await g.press("3294367792962#")
+        self.assertIn("ระงับบัตรโดยด่วน", await g.hear())
+        v = (await g.message("disconnect"))["parameters"]["outputVariables"]
+        self.assertEqual((v["intent"], v["handoffReason"], v["requestDetail"], v["customerName"]),
+                         ("live-agent-handoff", "card_lost", "แจ้งบัตรหายหรือถูกขโมย", "นางสาวพลอยใส ใจดี"))
+        self.assertEqual(v["topics"], "card_lost")
+
+    async def test_case_status_by_voice(self):
+        await self.start()
+        g = await self.call()
+        await g.open(); await g.hear()
+        await g.say("ซีเอส 1001 ถึงไหนแล้วครับ")
         await g.hear()
-        await g.say("ใช่ครับ")
-        self.assertIn("ติดต่อกลับ", await g.hear())                 # not verified: number to call back
-        await g.press("0899999999#")
+        await g.press("3294367792962#")
         self.assertIn("ซี เอส, ศูนย์ ศูนย์ ศูนย์, หนึ่ง ศูนย์ ศูนย์, หนึ่ง", await g.hear())   # case number, digit by digit
         await g.say("บายบาย")
         await g.hear()
         v = (await g.message("disconnect"))["parameters"]["outputVariables"]
-        self.assertEqual((v["intent"], v["ticket"], v["topics"]), ("end-conversation", "CS0001001", "report_problem,ticket_created"))
+        self.assertEqual((v["intent"], v["ticket"], v["topics"]), ("end-conversation", "CS0001001", "case_status"))
 
     async def test_silence_asks_then_hangs_up(self):
         await self.start(silence_seconds=0.6)
         g = await self.call()
         await g.open(); await g.hear()
-        self.assertIn("ยังอยู่ในสายไหมคะ", await g.hear())
+        self.assertIn("ยังอยู่ในสายไหมครับ", await g.hear())
         self.assertIn("ขอวางสายก่อน", await g.hear())
         v = (await g.message("disconnect"))["parameters"]["outputVariables"]
         self.assertEqual(v["intent"], "no-response")
@@ -188,12 +200,12 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await self.start()
         g = await self.call()
         await g.open(); await g.hear()
-        await g.say("เช็คยอด")
+        await g.say("ยอดค้างชำระ")
         await g.hear()
         await g.send("close", reason="disconnect")
         v = (await g.message("closed"))["parameters"]["outputVariables"]
         self.assertEqual(v["intent"], "caller-hung-up")
-        self.assertEqual(v["topics"], "check_balance")
+        self.assertEqual(v["topics"], "balance_due")
 
     async def test_ping_and_sequence_numbers(self):
         await self.start()
@@ -217,9 +229,9 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await self.start()
         g = await self.call()
         await g.open(channels=("external", "internal")); await g.hear()
-        caller = b"SAY:" + "เช็คยอด".encode()
+        caller = b"SAY:" + "ยอดค้างชำระ".encode()
         await g.ws.send(bytes(b for pair in zip(caller, b"\x00" * len(caller)) for b in pair))
-        self.assertIn("เบอร์โทรศัพท์", await g.hear())
+        self.assertIn("เลขบัตรประชาชน", await g.hear())
 
     async def test_connector_id_after_the_path(self):
         await self.start()
@@ -227,7 +239,7 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(ws.close)
         g = Genesys(ws)
         await g.open()
-        self.assertIn("สวัสดีค่ะ", await g.hear())
+        self.assertIn("สวัสดีครับ", await g.hear())
 
     async def test_tls_without_a_proxy(self):
         """wss:// served by the server itself, with a certificate."""
@@ -250,7 +262,7 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(ws.close)
         g = Genesys(ws)
         await g.open()
-        self.assertIn("สวัสดีค่ะ", await g.hear())
+        self.assertIn("สวัสดีครับ", await g.hear())
 
     async def test_voice_failure_hands_over(self):
         """A wrong Azure key means the bot cannot speak: the call goes to a person at once."""

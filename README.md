@@ -1,8 +1,15 @@
-# Thai call-center bot (ผู้ช่วยศูนย์บริการลูกค้า)
+# Thai call-center bot for a bank (ผู้ช่วยศูนย์บริการลูกค้า)
 
-A rule-based Thai customer-service assistant, built in the spirit of
-[huggingface/pybot](https://github.com/huggingface/pybot): plain Python, no model, no training,
-no packages to install. Every answer comes from rules you can read, test and audit.
+A rule-based Thai customer-service assistant for a bank call center (POC), built
+in the spirit of [huggingface/pybot](https://github.com/huggingface/pybot): plain Python, no model,
+no training, no packages to install. Every answer comes from rules you can read, test and audit.
+
+**What the bot does and doesn't do:** it answers *inquiries* (amounts due, loans, credit cards,
+deposit balances, the status of the customer's own case) after checking identity with the
+13-digit national ID number. *Requests* that open work (close or refinance a loan, apply for a
+card, raise a limit, cancel a card, transactions, complaints, lost cards) always go to an agent:
+the bot confirms what the customer wants, verifies them, and transfers with what it learned
+(customer name, request, phone). It never opens cases itself.
 
 - **Phase 1 (this): web chat, by typing or by voice.** A chat page and a JSON API.
   Hold the mic button to talk (release to send), tap it for hands-free, or press the phone button for a
@@ -25,8 +32,16 @@ Needs Python 3.8 or newer, nothing else.
 python -m channels.webchat.server
 ```
 
-Open http://localhost:8000. Demo data: phone `0812345678` with ID last 4 digits `1234`
-(or `0898765432` / `5678`), and order numbers `123456`, `654321`, `111222`.
+Open http://localhost:8000. Demo customers (national ID → who):
+
+| National ID | Customer | Has |
+|---|---|---|
+| `3294367792962` | นางสาวพลอยใส ใจดี (0815493626) | home loan, Platinum card, savings, case CS0001001 |
+| `1101700123456` | นายสมชาย ใจงาม (0812345678) | personal loan, Signature card, savings + fixed deposit |
+| `3100500678905` | นางวิภา รักษ์ดี (0861112233) | home loan, savings |
+| `1509900543215` | นายทดสอบ ระบบ (0636538939) | Classic card (520.75 due), savings |
+
+Try the script: "ต้องการปิดบัญชีสินเชื่อบ้าน" → "ใช่" → "ขอทราบรายละเอียดก่อน" → `3294367792962`.
 
 ```bash
 python -m unittest discover -s tests
@@ -62,7 +77,7 @@ install, no API key, and it works on GitHub Pages.
 - **Call mode** (phone button): a phone-call screen. Talk back and forth with no buttons, like calling the
   call center:
   - The bot greets you and reads the menu, listens, answers aloud, then listens again.
-  - When it asks for a phone, ID or order number, a **keypad** opens. Speak the number or type it
+  - When it asks for the national ID or a case number, a **keypad** opens. Speak the number or type it
     and press ส่ง (like # on a phone).
   - **Mute**, **keypad** and **hang up** buttons, plus a call timer and live captions. The
     screen stays on during the call.
@@ -70,7 +85,7 @@ install, no API key, and it works on GitHub Pages.
     transfer. In this demo no real agent system is connected, so the call then ends.
   - The whole call appears in the chat afterwards.
   - If the mic cannot be used, the call continues with the keypad and buttons, and says why.
-- **Numbers read the way an agent would:** phone, order and ticket numbers are read digit by
+- **Numbers read the way an agent would:** phone, ID and case numbers are read digit by
   digit ("ศูนย์ แปด หนึ่ง…"), money as "1250 บาท 50 สตางค์", and times as "8 นาฬิกา". The screen
   shows the text as written. Each reply carries a `speech` version for text-to-speech, which phase
   2 can reuse. Names TTS mispronounces go in `SAY_AS` in `config.py`.
@@ -107,7 +122,7 @@ export ANTHROPIC_API_KEY=...      # from https://platform.claude.com
 python -m channels.webchat.server --ai
 ```
 
-- **Rules first.** Identity checks, balances, orders, tickets and handoff never go to the AI. It
+- **Rules first.** Identity checks, balances, loans, cases and handoff never go to the AI. It
   sees no customer records and has no tools, so it cannot look up or change anything.
 - **Instructions:** the system prompt in `callcenter_bot/ai_fallback.py` tells the AI to answer in
   Thai with ค่ะ/คะ, in 1–3 sentences that sound natural spoken, using only the company facts in
@@ -121,21 +136,23 @@ python -m channels.webchat.server --ai
   `ai_fallback.py`, e.g. to `claude-haiku-5-5`, and test the Thai quality on your own questions.
 - **Not on GitHub Pages:** the API key must stay on a server. The Pages demo is rules-only.
 
-## Data tables (customers, balances, orders, cases, FAQ)
+## Data tables (demo bank data, cases, FAQ)
 
-The bot reads and writes real tables in SQLite, which is part of Python, so there is nothing to
-install:
+The bot reads real tables in SQLite, which is part of Python, so there is nothing to install:
 
 | Table | What it holds |
 |---|---|
-| `customers` | phone, name, last 4 ID-card digits (for the identity check), outstanding balance, due date |
-| `orders` | 6-digit order number, customer phone, status, carrier, tracking number, delivery date |
-| `sn_customerservice_case` | cases the bot opened, **shaped like ServiceNow's Case table** (same name and fields: `sys_id`, `number` CS0001001…, `short_description`, `description`, `state`, `priority`, `category`, `contact_type`, `consumer`, `close_notes`, `opened_at`) plus `callback_phone` and `order_id` |
-| `faq` | questions answered from data: topic, keywords customers say, the answer, and what to do after it (answer / offer a ticket / hand over). **The answers are examples: replace them with your real policies.** |
+| `customers` | national ID (13 digits, checksum checked: the identity check), title, name, phone, segment |
+| `deposit_accounts` | 10-digit account number, owner, type, balance |
+| `credit_cards` | 16-digit card number (the bot says only the last 4), owner, card name, limit, available, outstanding, minimum due, due date |
+| `loans` | contract number, owner, type (home / personal), outstanding principal, rate, installment, next due date, months left |
+| `sn_customerservice_case` | cases opened by agents, **shaped like ServiceNow's Case table** (same name and fields: `sys_id`, `number` CS0001001…, `short_description`, `description`, `state`, `priority`, `category`, `contact_type`, `consumer` = the customer's national ID, `close_notes`, `opened_at`) |
+| `faq` | questions answered from data: topic, keywords customers say, the answer, and what to do after it (answer, or verify and hand over). **The answers are examples: replace them with the bank's real policies.** |
+| `verify_failures` | failed identity checks, for the lockout (delete rows to unlock) |
 
-The tables are defined in `callcenter_bot/data/schema.sql`. Demo rows, including the test number
-`0636538939` (ID last 4 digits `8939`), are in `callcenter_bot/data/seed.sql`; the example FAQ
-in `seed_faq.sql`. A database made by an older version gets the new columns and the FAQ on start.
+The tables are defined in `callcenter_bot/data/schema.sql`, demo rows in `seed.sql`, the example
+FAQ in `seed_faq.sql`. A database from the earlier online-shop demo is replaced by the bank demo
+on start (its tickets are kept as cases).
 
 **Mock-data page** (for a POC on your own machine): every table, including the FAQ, on one page.
 
@@ -150,7 +167,7 @@ answer and ask the question again. It listens on 127.0.0.1 only; to open it to o
 
 **Admin page `/admin`** (the clipboard button in the chat header): view, search, add, edit and delete rows, and
 update case state. Changes are used by the bot straight away. Wrong input is refused with a
-Thai message, e.g. a 9-digit order number.
+Thai message, e.g. a national ID number that fails the checksum.
 
 - **Server:** the database is the file `data/callcenter.db`, created with the demo rows on first
   start (set `CALLCENTER_DB` to move it). The admin page needs a password:
@@ -164,63 +181,58 @@ Thai message, e.g. a 9-digit order number.
 - To use your company's own systems instead, rewrite the functions in
   `callcenter_bot/backend.py`.
 
-## Cases in ServiceNow
+## Cases
 
-Requests the bot opens are cases. By default they go to the local table
-`sn_customerservice_case`, which has the same name and fields as ServiceNow Customer Service
-Management's Case table. To use a real instance instead, set on the server:
-
-```bash
-SERVICENOW_INSTANCE=https://yourcompany.service-now.com
-SERVICENOW_USER=...          # integration user: read and create on sn_customerservice_case
-SERVICENOW_PASSWORD=...
-# optional
-SERVICENOW_FIELD_MAP=callback_phone=u_callback_phone,order_id=u_order_number   # your custom fields
-SERVICENOW_SKIP_FIELDS=category        # fields your instance's choice lists don't accept
-```
-
-The bot then opens cases with `POST /api/now/table/sn_customerservice_case` and reads them by
-number with the Table API. If ServiceNow cannot be reached, the customer is handed to an agent
-(`handoffReason=case_error`). Case states and what the bot says for each are in
-`config.CASE_STATES`: the numbers are ServiceNow's usual ones (1 New, 10 Open, 18 Awaiting Info,
-6 Resolved, 3 Closed, 7 Cancelled); check yours under System Definitions > Choice Lists.
-
-Not yet tried against a real instance. `consumer` in ServiceNow is a reference to the consumer
-record; until customers also come from ServiceNow, the verified phone is written into the
-description. See `callcenter_bot/servicenow.py`. A database made by an older version moves its
-`tickets` rows into the case table on start (TK1001 becomes CS0001001); customers can still say
-the old TK numbers.
+Customers can ask the status of their own case (CS0001001…). Cases live in the local table
+`sn_customerservice_case`, shaped like ServiceNow Customer Service Management's Case table (same
+name and fields), so the demo looks like the real thing. **This server does not connect to
+ServiceNow:** Genesys (OpenFrame) owns that integration. Until a real source is agreed (e.g. a
+Genesys Data Action that looks cases up), status questions are answered from the demo table only;
+in production, hand them to an agent. Case states and what the bot says for each are in
+`config.CASE_STATES` (ServiceNow's usual numbers: 1 New, 10 Open, 18 Awaiting Info, 6 Resolved,
+3 Closed, 7 Cancelled). A database made by an older version moves its `tickets` rows into the
+case table on start (TK1001 becomes CS0001001); customers can still say the old TK numbers.
 
 ## What it handles
 
 | Topic | Example customer line | What happens |
 |---|---|---|
-| Greeting | สวัสดีครับ | Welcome and menu |
-| Outstanding balance | บิลเดือนนี้ต้องจ่ายเท่าไหร่ | Asks for the phone number, verifies with the last 4 ID digits, gives the amount and due date |
-| Payment channels | จ่ายได้ที่ไหนบ้าง | Lists the channels |
-| Order status | ของยังไม่มาเลย | Asks for the order number and gives the status, carrier and expected date. Past the expected date, offers a ticket to chase it |
-| Cancel an order | ยกเลิกออเดอร์ | Not shipped yet: offers a cancellation request (ticket). Shipped: explains returns |
-| Change delivery address | เปลี่ยนที่อยู่จัดส่ง | Hands over with the order number (an agent changes it) |
-| Not received / wrong or damaged item | ขึ้นว่าส่งแล้วแต่ยังไม่ได้ของ, ได้ของผิด | Delivered: offers a ticket (check with the carrier / return or exchange) |
-| Report a problem | เน็ตหลุดบ่อยตั้งแต่เมื่อวาน | Confirms the summary and opens a ticket |
-| Case status | เรื่อง CS0001001 ถึงไหนแล้ว, ซีเอส 1001 | State and date of the case (no details without verification); Awaiting Info: offers the agent at once; open: offers an agent to speed it up |
-| FAQ (from the `faq` table) | จ่ายแล้วแต่ยอดยังไม่ลด, ผ่อนได้ไหม, ขอใบเสร็จ, ลืมเลขบัตร | The stored answer, then nothing / a ticket offer / a handoff |
-| Opening hours | เปิดกี่โมง | Gives the opening hours and whether agents are working now |
-| Human agent | ขอคุยกับเจ้าหน้าที่ | Hands off at any point (`handoff: true`), with the order and ticket talked about. Outside `AGENT_HOURS`, offers a call back instead |
+| Greeting | (call starts) | "สวัสดีครับ ผู้ช่วยอัตโนมัติ ต้องการติดต่อเรื่องใดครับ" (the services as buttons; said aloud only when the caller is lost) |
+| Amounts due | ยอดค้างชำระบัตรเครดิต, ยอดชำระขั้นต่ำ | Verify, then each card's outstanding / minimum / due date and each loan's installment; offers the payment channels aloud |
+| Loan details | สินเชื่อบ้านเหลือเท่าไหร่ | Verify, then outstanding principal, rate, installment, due date, months left |
+| Credit card | วงเงินบัตรเครดิตเหลือเท่าไหร่ | Verify, then limit and available credit |
+| Deposit balance | ยอดเงินในบัญชีเหลือเท่าไหร่ | Verify, then each account's balance (last 4 digits only) |
+| Case status | เรื่อง CS0001001 ถึงไหนแล้ว, ซีเอส 1001 | Verify, then the state of the customer's **own** case; agent's notes once resolved; Awaiting Info: offers the agent |
+| Close / refinance a loan | ต้องการปิดบัญชีสินเชื่อบ้าน | "ใช่ไหมครับ" → close now or details first → verify → transfer (`loan_close` / `loan_refinance`) with the request |
+| Card requests | สมัครบัตร, เพิ่มวงเงิน, ยกเลิกบัตร | Confirm → verify → transfer (`card_apply` / `card_limit` / `card_cancel`) |
+| Transactions, complaints | โอนเงินไม่ได้, ร้องเรียน | Confirm → verify → transfer (`transaction_help` / `complaint`) |
+| Urgent | บัตรหาย, รายการที่ไม่ได้ทำ | No confirmation question: verify → transfer at once (`card_lost` / `unauthorized`) |
+| FAQ (from the `faq` table) | ค่าปรับปิดก่อนกำหนด, ลืมรหัสแอป, เปลี่ยนเบอร์ | The stored answer; "handoff" entries then verify and transfer |
+| Payment channels, hours | จ่ายที่ไหนได้บ้าง, เปิดกี่โมง | Answered without verification |
+| Human agent | ขอคุยกับเจ้าหน้าที่ | Asks to verify first (so the agent needn't); said again: transfers at once |
 | Thanks / goodbye | ขอบคุณครับ, บายบาย | Polite close and session ends |
 
 It also handles:
 - **Thai input:** Thai digits, stretched letters (ครับบบ), polite particles, and numbers split
-  with spaces or dashes.
+  with spaces or dashes or said as words (an ID number read out digit by digit works).
 - **Moving around:** "ยกเลิก" leaves the current step, and the customer can change topic mid-step.
-- **Not understood:** after 2 misunderstood lines the bot offers a human agent. After 3 failed ID
-  checks it hands off for account safety.
-- **Proactive:** after the balance it asks aloud whether the customer wants the payment channels
-  (so it works on the phone too) and says when the due date has passed; after a ticket it says how
-  to follow it up ("เช็คเรื่อง CS0001001").
-- **Tickets need a way back:** a customer who did not verify is asked for a number to call back.
-- **Never changes an order itself:** cancellations, address changes and returns become a ticket or
-  a handoff for a person.
+- **Not understood:** after 2 misunderstood lines the bot offers a human agent.
+- **Identity checks:** calling from the registered phone (Genesys `ani`), the last 4 ID digits are
+  enough; otherwise (another phone, web chat) the 13-digit national ID with its checksum (a mistyped
+  number is asked again, not counted). One answer for any mismatch. 3 failures in a conversation transfer
+  (`verify_failed`); 3 failures on the same ID within 30 minutes, from any call, lock it out of the
+  bot's check for a while (`verify_locked`). Settings in `config.py`.
+- **Only your own cases:** another customer's case gets "ไม่พบเรื่อง..." as if it did not exist;
+  3 misses transfer (`case_not_found`); a case with no customer on it goes to an agent (`case_check`).
+- **For the agent:** every transfer carries `customerName`, `requestDetail`, `verifiedPhone`, the
+  case number when one was talked about, for loan requests the loan (`loanDetail`) and why the customer
+  closes it (`closeReason`: refinance and to which bank, own funds, selling, high installments...), a one-line `summary` and the end of the `transcript`
+  (≤500 characters each, for Genesys participant data). Genesys (OpenFrame) carries them on to the
+  ServiceNow Interaction: this server does not write to ServiceNow. See `callcenter_bot/transcripts.py`
+  and channels/genesys/voice-bot-flow.md section 6.
+- **Numbers spoken well:** amounts as amounts ("37,550 บาท", no ".00"), card and account endings
+  digit by digit, case numbers letter by letter. Male voice (ครับ / ผม); switch in `config.py`.
+- **Short replies:** one sentence where one will do, so callers are not kept listening.
 
 ## Layout
 
@@ -243,8 +255,8 @@ It also handles:
 
 1. **Your topics.** Add keywords in `intents.py`, then a `_on_<topic>` method in `bot.py`. Collect
    real chat logs and add the words customers actually use. This matters more than anything else.
-2. **Your systems.** Rewrite the four functions in `backend.py` to call your CRM, billing, order
-   and ticketing systems.
+2. **Your systems.** Rewrite the functions in `backend.py` to call the core banking, card and
+   loan systems (or ServiceNow), keeping their return shapes.
 3. **Your wording.** Edit `config.py`, and the reply text in `bot.py`.
 4. **Live agents.** In `channels/webchat/server.py`, at the `TODO` where `reply.handoff` is true,
    connect your agent desk (LINE OA, Zendesk, Freshchat, Genesys, ...).

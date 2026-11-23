@@ -72,16 +72,18 @@ curl -s https://xxxx-xxxx.trycloudflare.com/api/genesys/turn \
 |---|---|
 | `sessionId` | `Session.ConversationId` แยกแต่ละสาย |
 | `text` | สิ่งที่ผู้โทรพูด ส่ง `""` ครั้งแรกเพื่อให้บอททักทาย |
+| `ani` | เบอร์ผู้โทร (`Call.Ani` เช่น `tel:+66815493626`) ถ้าตรงกับเบอร์ที่ลงทะเบียน บอทขอแค่เลขบัตร 4 ตัวท้าย ไม่ส่งหรือไม่ตรง ขอ 13 หลัก |
 | `format` | `speech` (ค่าเริ่มต้น: ตัวเลขและเงินเขียนเป็นคำให้ TTS อ่าน) หรือ `text` |
 
 | response (string ทั้งหมด) | ค่า |
 |---|---|
 | `reply` | ประโยคที่ให้ Genesys พูด |
 | `action` | `continue`, `handoff`, `end` |
-| `handoffReason` | `agent`, `verify_failed`, `adapter_error`, `order_change_address` หรือรหัสหัวข้อ FAQ ที่โอน (`payment_arrangement`, `bill_detail`, `forgot_id`, `update_contact`, `cancel_service`) หรือว่าง |
+| `handoffReason` | `agent`, `loan_close`, `loan_refinance`, `card_apply`, `card_limit`, `card_cancel`, `transaction_help`, `complaint`, `card_lost`, `unauthorized`, `verify_failed`, `verify_locked`, `case_not_found`, `case_check`, `case_error`, `adapter_error` หรือรหัสหัวข้อ FAQ ที่โอน |
 | `verifiedPhone` | เบอร์ที่ยืนยันตัวตนผ่านแล้ว หรือว่าง |
 | `expectsDigits` | `true` ระหว่างรอเบอร์โทร เลขบัตร หรือเลขคำสั่งซื้อ |
-| `orderId`, `ticket` | ตอนโอน: เลขคำสั่งซื้อและเลขเรื่องที่คุยกันในสาย ให้เจ้าหน้าที่เห็น (ไม่บังคับ: เพิ่มใน output contract ถ้าต้องการใช้) |
+| `customerName`, `requestDetail`, `ticket` | ตอนโอน: ชื่อลูกค้าที่ยืนยันตัวตนแล้ว, เรื่องที่ลูกค้าขอ (เช่น "ปิดบัญชีสินเชื่อบ้าน (สอบถามรายละเอียดก่อน)") และเลขเคสที่คุยกัน ให้เจ้าหน้าที่ไม่ต้องถามซ้ำ (เพิ่มใน output contract และ Set Participant Data) |
+| `loanDetail`, `closeReason` | ตอนโอนเรื่องสินเชื่อ (ปิดบัญชี/รีไฟแนนซ์/ขอลดดอกเบี้ย/ปรับโครงสร้างหนี้): สินเชื่อที่ลูกค้าพูดถึง (เช่น "สินเชื่อบ้าน ลงท้าย 4567 คงเหลือ 2,350,000 บาท ดอกเบี้ย 5.25% ...") และเหตุผลที่ปิด (เช่น "รีไฟแนนซ์ไปธนาคารอื่น (กสิกรไทย)") สำหรับทีม retention; อยู่ใน `summary` ด้วยแล้ว |
 
 บอทขัดข้องจะตอบ 200 + `action=handoff` เสมอ ผู้โทรจะไม่หลุดสาย อย่าเปิด `--ai` ตอนใช้กับ Data Action
 เพราะคำตอบจาก AI อาจช้ากว่าที่ Data Action รอ
@@ -110,7 +112,8 @@ Admin → Integrations → **Actions** → **Add Action** → เลือก in
   "type": "object",
   "properties": {
     "sessionId": {"type": "string"},
-    "text": {"type": "string"}
+    "text": {"type": "string"},
+    "ani": {"type": "string"}
   },
   "required": ["sessionId"]
 }
@@ -127,8 +130,13 @@ Admin → Integrations → **Actions** → **Add Action** → เลือก in
     "handoffReason": {"type": "string"},
     "verifiedPhone": {"type": "string"},
     "expectsDigits": {"type": "string"},
-    "orderId": {"type": "string"},
-    "ticket": {"type": "string"}
+    "customerName": {"type": "string"},
+    "requestDetail": {"type": "string"},
+    "ticket": {"type": "string"},
+    "loanDetail": {"type": "string"},
+    "closeReason": {"type": "string"},
+    "summary": {"type": "string"},
+    "transcript": {"type": "string"}
   }
 }
 ```
@@ -139,9 +147,10 @@ Admin → Integrations → **Actions** → **Add Action** → เลือก in
 - Headers: `Content-Type: application/json` และ `x-bot-secret: ${credentials.secret}`
 - Request Template:
   ```
-  {"sessionId": "${input.sessionId}", "text": "$esc.jsonEncode(${input.text})"}
+  {"sessionId": "${input.sessionId}", "text": "#if($input.text)$esc.jsonEncode($input.text)#end", "ani": "#if($input.ani)$esc.jsonEncode($input.ani)#end"}
   ```
-  `$esc.jsonEncode` กันเครื่องหมายคำพูดในสิ่งที่ผู้โทรพูดทำให้ JSON เสีย
+  `$esc.jsonEncode` กันเครื่องหมายคำพูดในสิ่งที่ผู้โทรพูดทำให้ JSON เสีย ส่วน `#if(...)#end` กันช่องที่ว่าง (null)
+  เช่น `text` ตอนเริ่มสาย หรือ `ani` ของเบอร์ซ่อน ไม่ให้ action error ว่า "evaluated to null"
 
 **Configuration → Response:** ใช้ค่าเริ่มต้น (`successTemplate` = `${rawResult}`) เพราะ response แบนตรงกับ
 output contract แล้ว
@@ -157,14 +166,17 @@ Architect → **Bot Flow** (voice) → สร้างใหม่ เช่น 
 ### 3.1 ตัวแปรและ outputs
 
 - ตัวแปรใน flow (String): `Flow.text` (ค่าเริ่มต้น `""`), `Flow.reply`, `Flow.action`
-- **Bot flow outputs** (ประกาศใน Settings ของ flow): `Flow.handoffReason`, `Flow.verifiedPhone` (String)
+- **Bot flow input** (String): `Flow.ani` รับเบอร์ผู้โทรจาก Inbound Call flow (ข้อ 4)
+- **Bot flow outputs** (ประกาศใน Settings ของ flow, String): `Flow.handoffReason`, `Flow.verifiedPhone`,
+  `Flow.customerName`, `Flow.requestDetail`, `Flow.summary`, `Flow.transcript`
 
 ### 3.2 Task `Turn` (วนทุกประโยค)
 
 1. **Call Data Action** `Thai Bot Turn`
-   - Inputs: `sessionId = Session.ConversationId`, `text = Flow.text`
+   - Inputs: `sessionId = Session.ConversationId`, `text = Flow.text`, `ani = Flow.ani`
    - Outputs: `reply → Flow.reply`, `action → Flow.action`, `handoffReason → Flow.handoffReason`,
-     `verifiedPhone → Flow.verifiedPhone`
+     `verifiedPhone → Flow.verifiedPhone`, `customerName → Flow.customerName`,
+     `requestDetail → Flow.requestDetail`, `summary → Flow.summary`, `transcript → Flow.transcript`
    - **Failure / Timeout:** Update Data `Flow.handoffReason = "adapter_error"` → **Exit Bot Flow**
 2. **Switch** ตาม `Flow.action`:
    - `"handoff"` → **Communicate** `Flow.reply` → **Exit Bot Flow**
@@ -188,14 +200,61 @@ Publish flow
 ## 4. Inbound Call flow
 
 1. Architect → Inbound Call → flow เช่น `Thai Bot Voice Entry` → ภาษา **Thai**
-2. **Call Bot Flow** → `Thai Bot Voice` → map outputs: `handoffReason → Flow.handoffReason`,
-   `verifiedPhone → Flow.verifiedPhone`
+2. **Call Bot Flow** → `Thai Bot Voice`
+   - input: `Flow.ani` = `Call.Ani` (เบอร์ผู้โทร ใช้ยืนยันตัวตนแบบ 4 ตัวท้าย)
+   - map outputs: `handoffReason`, `verifiedPhone`, `customerName`, `requestDetail`, `loanDetail`, `closeReason`, `summary`, `transcript`
+     ไปตัวแปรชื่อเดียวกันใน flow นี้
 3. หลัง Call Bot Flow:
-   - `Flow.handoffReason` ไม่ว่าง → **Set Participant Data** (`verifiedPhone`, `handoffReason`) →
-     **Set Screen Pop** (Script ที่แสดงค่าเหล่านี้) → **Transfer to ACD**
+   - `Flow.handoffReason` ไม่ว่าง → **Set Participant Data** (`verifiedPhone`, `handoffReason`, `customerName`,
+     `requestDetail`, `loanDetail`, `closeReason`, `summary`, `transcript`) → **Set Screen Pop** (Script ที่แสดงค่าเหล่านี้) → **Transfer to ACD**
+   - `summary` เช่น "ยืนยันตัวตนแล้ว (เบอร์ที่โทรเข้า + เลขบัตร 4 ตัวท้าย) | ต้องการ: ปิดบัญชีสินเชื่อบ้าน (สอบถามรายละเอียดก่อน)"
+   - `transcript` คือท้ายบทสนทนาไม่เกิน 500 ตัวอักษร (ขีดจำกัดของ Set Participant Data)
    - ว่าง (ผู้โทรลาแล้ว) → **Disconnect**
    - **Failure** → **Transfer to ACD** ผู้โทรจะไม่หลุดสาย
 4. ผูกเบอร์ทดสอบ (DID) เข้ากับ flow นี้ที่ Admin → Telephony / Call Routing → Publish
+
+### 4.1 Participant data สำหรับ ServiceNow (KTB PayOff PoC)
+
+ServiceNow (BR `MFEC Genesys - fetch participant data`) อ่านค่าเหล่านี้เองตอนสายถึง agent ชื่อต้องตรงตัวพิมพ์เล็กใหญ่
+ทุกค่าเป็น string และว่างเมื่อไม่รู้ บอทส่งทุกตัวกลับมาใน Data Action แล้ว ให้ map outputs ไปตัวแปร flow ชื่อเดียวกัน
+แล้วใส่ใน **Set Participant Data** (โหมด Σ expression) ก่อน Transfer to ACD:
+
+| Attribute | ค่าจากบอท |
+|---|---|
+| `summary` | สรุป 1 บรรทัด (≤500) รวมเหตุผลและข้อมูลสินเชื่อ |
+| `transcript` | ท้ายบทสนทนา ≤500 ตัวอักษร (ServiceNow รับได้ 4000 แต่ Set Participant Data ของ Genesys รับได้ 500 ต่อค่า) |
+| `verifiedPhone` | เบอร์ของลูกค้าที่ยืนยันแล้ว รูปแบบ `+66810000002` ว่าง = ยังไม่ยืนยัน |
+| `topic` | `payoff` (ปิด/รีไฟแนนซ์), `homeloan_inquiry` (ลดดอกเบี้ย, ปรับโครงสร้าง, ข้อมูลสินเชื่อ), `credit_card`, `deposit`, `complaint`, `other` |
+| `identify_type` | `national_id` เมื่อยืนยันแล้ว |
+| `kyc_result` | `pass` / `fail` (ยืนยันไม่ผ่านหรือถูกล็อก) / ว่าง |
+| `loan_number` | เลขสินเชื่อเต็ม เช่น `PHL-LN-0002` |
+| `reason` | `refinance`, `own_funds`, `sell_property`, `high_installment`, `high_interest`, `not_given`, `other` |
+| `closing_within_days` | เช่น `30` (ลูกค้าตอบ "ภายในกี่วัน") |
+| `new_bank_name`, `new_interest_rate`, `promotion_period_months`, `cashback_offered` | ข้อเสนอของธนาคารใหม่ที่ลูกค้าบอก เช่น `ธนาคาร B`, `3.25`, `24`, `5000` |
+
+`summary_confidence` ไม่ส่ง (ไม่บังคับ). ServiceNow รัน flow PayOff เองเมื่อ `topic = payoff` + มี `verifiedPhone`
++ เบอร์ที่โทรเข้าตรงกับ consumer ของ scenario C1–C6 (`+6681000000N`) ข้อมูล mock ในบอทตั้งให้ตรงกันแล้ว
+(ลูกค้า สมชาย/สมหญิง/วิชัย/มานี/ปิติ/ชูใจ ทดสอบ, สินเชื่อ `PHL-LN-000N`) เลขบัตร 4 ตัวท้ายสำหรับยืนยัน: C1 `0011`,
+C2 `0029`, C3 `0037`, C4 `0045`, C5 `0053`, C6 `0061`
+
+---
+
+## 6. Transcript ใน Interaction (Genesys + ServiceNow)
+
+**ServiceNow:** Genesys (OpenFrame) เป็นคนส่งข้อมูลไป ServiceNow เซิร์ฟเวอร์บอทไม่เขียนลง ServiceNow เอง
+ค่า `summary` และ `transcript` ที่ตั้งด้วย Set Participant Data คือสิ่งที่ Genesys นำไปใส่ใน Interaction ได้
+(ตั้งการ map ใน OpenFrame / ฝั่ง ServiceNow)
+
+**Genesys:** Interaction details แสดง `summary` และ `transcript` ใน participant data (ข้อ 4) ถ้าต้องการถอดความทั้งสาย
+รวมช่วงที่คุยกับเจ้าหน้าที่ ใช้ Speech & Text Analytics ที่มากับ CX 4 (ตั้งค่า ไม่ต้องแก้โค้ด):
+1. เปิดการบันทึกเสียงของคิว/สาย (Recording policy)
+2. Admin → **Speech and Text Analytics** → เปิด Voice Transcription แล้วเปิดที่คิวที่รับสายจากบอท
+   (Admin → Queues → Voice Transcription)
+3. ตั้งภาษา Thai ใน In-Queue / Inbound flow ของคิวนั้น
+4. ตรวจว่า org ถอดความภาษาไทยได้ (หน้า Genesys Cloud supported languages) ช่วงที่อยู่ใน bot flow
+   อาจไม่ถูกถอดความด้วยส่วนนี้ ใช้ transcript จากบอทแทน
+
+ชื่อเมนูอาจต่างไปตามรุ่น UI ให้ยืนยันกับผู้ดูแล Genesys
 
 ---
 

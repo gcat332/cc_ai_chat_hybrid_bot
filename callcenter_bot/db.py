@@ -4,19 +4,20 @@ Server: a file, data/callcenter.db by default (set CALLCENTER_DB to move it). Cr
 rows in data/seed.sql the first time. GitHub Pages: the same tables run inside the browser and
 reset when the page reloads.
 
-Edit the rows on the admin page (`/admin`), or with any SQLite tool, e.g. DB Browser for SQLite.
+Edit the rows on the data page (python -m dataadmin), the chat's admin page (`/admin`), or with any
+SQLite tool. Checks for edits are in tables.py.
 """
 import os
-import re
 import sqlite3
 import threading
-from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).parent
 DEFAULT_PATH = os.environ.get("CALLCENTER_DB", str(HERE.parent / "data" / "callcenter.db"))
 CASE_TABLE = "sn_customerservice_case"
 CASE_PREFIX, CASE_DIGITS, CASE_FIRST = "CS", 7, 1001   # CS0001001, CS0001002, ...
+# The bank's tables, in the order pages show them and in which rows are saved and restored.
+TABLES = ("customers", "customer_phones", "deposit_accounts", "credit_cards", "loans", CASE_TABLE, "faq", "verify_failures")
 
 _conn = None
 _lock = threading.RLock()
@@ -32,9 +33,10 @@ def use_database(path: str = DEFAULT_PATH, seed: bool = True) -> sqlite3.Connect
         conn = sqlite3.connect(path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        had_faq = bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='faq'").fetchone())
+        had_faq = _has_table(conn, "faq")
+        if _drop_shop_demo(conn):
+            is_new = True                  # the old demo's rows are gone: load the bank's
         conn.executescript((HERE / "data" / "schema.sql").read_text(encoding="utf-8"))
-        _add_missing_columns(conn)
         _move_old_tickets(conn)
         if is_new and seed:
             conn.executescript((HERE / "data" / "seed.sql").read_text(encoding="utf-8"))
@@ -47,22 +49,31 @@ def use_database(path: str = DEFAULT_PATH, seed: bool = True) -> sqlite3.Connect
         return conn
 
 
-# Columns added after the first release: databases made before them get them on start.
-_NEW_COLUMNS = {}
+def _has_table(conn, name) -> bool:
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
 
 
-def _add_missing_columns(conn: sqlite3.Connection):
-    for table, columns in _NEW_COLUMNS.items():
-        have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-        for name, kind in columns.items():
-            if name not in have:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+def _drop_shop_demo(conn) -> bool:
+    """Databases from the first (online shop) demo: customers by phone, orders. Demo rows only, so
+    they are dropped and the bank's demo rows loaded. Returns True when that happened."""
+    dropped = False
+    if _has_table(conn, "customers"):
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(customers)")}
+        if "national_id" not in columns:
+            conn.execute("DROP TABLE IF EXISTS orders")
+            conn.execute("DROP TABLE customers")
+            dropped = True
+    conn.execute("DROP TABLE IF EXISTS interaction")   # a stand-in kept briefly: Genesys sends transcripts now
+    if _has_table(conn, "verify_failures"):
+        if "identity" not in {row[1] for row in conn.execute("PRAGMA table_info(verify_failures)")}:
+            conn.execute("DROP TABLE verify_failures")
+    return dropped
 
 
 def _move_old_tickets(conn: sqlite3.Connection):
     """Databases from before the case table kept requests in `tickets` (TK1001 ...): copy them
     into the case table (TK1001 becomes CS0001001) and drop the old table."""
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tickets'").fetchone():
+    if not _has_table(conn, "tickets"):
         return
     have = {row[1] for row in conn.execute("PRAGMA table_info(tickets)")}
     col = lambda name: name if name in have else "NULL"
@@ -95,8 +106,9 @@ def reset_to_demo():
     with _lock:
         conn = _db()
         try:
-            for table in (CASE_TABLE, "orders", "customers", "faq"):
-                conn.execute(f"DELETE FROM {table}")      # case numbers start again at CS0001001
+            for table in reversed(TABLES):          # children before customers
+                conn.execute(f"DELETE FROM {table}")
+            conn.commit()
             for script in ("seed.sql", "seed_faq.sql"):
                 conn.executescript("BEGIN;" + (HERE / "data" / script).read_text(encoding="utf-8") + "COMMIT;")
         except Exception:
@@ -122,124 +134,36 @@ def execute(sql: str, args=()) -> int:
         return cur.lastrowid
 
 
-# ---- Validation for edits from the admin page --------------------------------------------------
-class InvalidRow(ValueError):
-    """A row the tables would refuse; the message is shown to the admin in Thai."""
-
-
-def _iso_date(value, field):
-    if value in (None, ""):
-        return None
-    try:
-        return date.fromisoformat(str(value)).isoformat()
-    except ValueError:
-        raise InvalidRow(f"{field}: ใช้รูปแบบวันที่ ปปปป-ดด-วว (ค.ศ.) เช่น 2026-12-05")
-
-
-def save_customer(row: dict, old_phone: str = None):
-    phone = re.sub(r"\D", "", str(row.get("phone", "")))
-    if not re.fullmatch(r"0\d{8,9}", phone):
-        raise InvalidRow("เบอร์โทรต้องเป็นตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0")
-    name = str(row.get("name", "")).strip()
-    if not name:
-        raise InvalidRow("กรุณาใส่ชื่อลูกค้า")
-    id_last4 = str(row.get("id_last4", "")).strip()
-    if not re.fullmatch(r"\d{4}", id_last4):
-        raise InvalidRow("เลขบัตร 4 ตัวท้ายต้องเป็นตัวเลข 4 หลัก")
-    try:
-        balance = round(float(str(row.get("balance") or 0).replace(",", "")), 2)
-    except ValueError:
-        raise InvalidRow("ยอดค้างชำระต้องเป็นตัวเลข")
-    if balance < 0:
-        raise InvalidRow("ยอดค้างชำระติดลบไม่ได้")
-    due = _iso_date(row.get("due_date"), "วันครบกำหนด")
-    values = (phone, name, id_last4, balance, due)
-    with _lock:
-        if old_phone and old_phone != phone:
-            if query("SELECT 1 FROM customers WHERE phone = ?", (phone,)):
-                raise InvalidRow(f"มีลูกค้าเบอร์ {phone} อยู่แล้ว")
-            execute("UPDATE customers SET phone=?, name=?, id_last4=?, balance=?, due_date=? WHERE phone=?",
-                    values + (old_phone,))
-        else:
-            execute("INSERT INTO customers (phone, name, id_last4, balance, due_date) VALUES (?,?,?,?,?) "
-                    "ON CONFLICT(phone) DO UPDATE SET name=excluded.name, id_last4=excluded.id_last4, "
-                    "balance=excluded.balance, due_date=excluded.due_date", values)
-    return phone
-
-
-def save_order(row: dict, old_id: str = None):
-    order_id = str(row.get("order_id", "")).strip()
-    if not re.fullmatch(r"\d{6}", order_id):
-        raise InvalidRow("เลขคำสั่งซื้อต้องเป็นตัวเลข 6 หลัก")
-    phone = re.sub(r"\D", "", str(row.get("phone") or "")) or None
-    if phone and not query("SELECT 1 FROM customers WHERE phone = ?", (phone,)):
-        raise InvalidRow(f"ไม่มีลูกค้าเบอร์ {phone} ในตารางลูกค้า")
-    status = str(row.get("status", "")).strip()
-    if not status:
-        raise InvalidRow("กรุณาใส่สถานะคำสั่งซื้อ")
-    values = (order_id, phone, status, str(row.get("carrier") or "").strip() or None,
-              str(row.get("tracking") or "").strip() or None, _iso_date(row.get("eta"), "วันที่ได้รับ"))
-    with _lock:
-        if old_id and old_id != order_id:
-            if query("SELECT 1 FROM orders WHERE order_id = ?", (order_id,)):
-                raise InvalidRow(f"มีคำสั่งซื้อเลข {order_id} อยู่แล้ว")
-            execute("UPDATE orders SET order_id=?, phone=?, status=?, carrier=?, tracking=?, eta=? "
-                    "WHERE order_id=?", values + (old_id,))
-        else:
-            execute("INSERT INTO orders (order_id, phone, status, carrier, tracking, eta) VALUES (?,?,?,?,?,?) "
-                    "ON CONFLICT(order_id) DO UPDATE SET phone=excluded.phone, status=excluded.status, "
-                    "carrier=excluded.carrier, tracking=excluded.tracking, eta=excluded.eta", values)
-    return order_id
-
-
-def save_case(row: dict, sys_id: str):
-    """The admin page changes a case's state (and close notes)."""
-    try:
-        state = int(row.get("state"))
-    except (TypeError, ValueError):
-        raise InvalidRow("กรุณาเลือกสถานะ")
-    execute(f"UPDATE {CASE_TABLE} SET state = ?, close_notes = COALESCE(?, close_notes) WHERE sys_id = ?",
-            (state, (str(row["close_notes"]).strip() or None) if "close_notes" in row else None, sys_id))
-
-
-def delete(table: str, key: str):
-    column = {"customers": "phone", "orders": "order_id", CASE_TABLE: "sys_id", "faq": "topic"}[table]
-    execute(f"DELETE FROM {table} WHERE {column} = ?", (key,))
-
-
 def all_tables() -> dict:
-    return {
-        "customers": query("SELECT * FROM customers ORDER BY name"),
-        "orders": query("SELECT * FROM orders ORDER BY order_id"),
-        CASE_TABLE: query(f"SELECT * FROM {CASE_TABLE} ORDER BY number DESC"),
-    }
+    """Every bank table's rows, for the admin pages."""
+    order = {CASE_TABLE: "number DESC", "verify_failures": "id DESC"}
+    return {t: query(f"SELECT * FROM {t} ORDER BY {order.get(t, 'rowid')}") for t in TABLES}
 
 
 # ---- Save/restore all rows (the GitHub Pages demo keeps them in the browser's storage) ---------
-_TABLES = {"customers": ("phone", "name", "id_last4", "balance", "due_date"),
-           "orders": ("order_id", "phone", "status", "carrier", "tracking", "eta"),
-           CASE_TABLE: ("sys_id", "number", "short_description", "description", "state", "priority", "category",
-                        "contact_type", "consumer", "callback_phone", "order_id", "close_notes", "opened_at"),
-           "faq": ("topic", "title", "keywords", "answer", "action")}
+SAVE_VERSION = 2   # rows saved by the shop demo (version 1) are not restored
 
 
 def export_rows() -> dict:
-    return {t: query(f"SELECT {', '.join(cols)} FROM {t}") for t, cols in _TABLES.items()}
+    return {"version": SAVE_VERSION, **{t: query(f"SELECT * FROM {t}") for t in TABLES if t != "verify_failures"}}
 
 
 def import_rows(data: dict):
     """Replace every row with `data` (from export_rows). All or nothing."""
+    if data.get("version") != SAVE_VERSION:
+        return
     with _lock:
         conn = _db()
         try:
-            for table in (CASE_TABLE, "orders", "customers"):
-                conn.execute(f"DELETE FROM {table}")
-            if "faq" in data:          # saved by an older page: keep the example FAQ
-                conn.execute("DELETE FROM faq")
-            for table, cols in _TABLES.items():
+            for table in reversed(TABLES):
+                if table in data:
+                    conn.execute(f"DELETE FROM {table}")
+            for table in TABLES:
+                columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
                 for row in data.get(table, []):
+                    cols = [c for c in row if c in columns]
                     conn.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-                                 [row.get(c) for c in cols])
+                                 [row[c] for c in cols])
             conn.commit()
         except Exception:
             conn.rollback()

@@ -17,7 +17,8 @@ def thai_date(d, today=None) -> str:
 
 
 def baht(amount: float) -> str:
-    return f"{amount:,.2f} บาท"
+    """37550 -> "37,550 บาท", 85420.5 -> "85,420.50 บาท": no ".00" on whole amounts."""
+    return f"{amount:,.0f} บาท" if float(amount).is_integer() else f"{amount:,.2f} บาท"
 
 
 def mask_phone(phone: str) -> str:
@@ -81,12 +82,13 @@ def speech_text(text: str, say_as=None, keep_together=()) -> str:
 
     Pauses: "." after a sentence (after ค่ะ/คะ/ครับ), "," between phrases (where Thai text has a
     space), and "," between the groups of a phone, order or ticket number."""
-    for phrase in keep_together:
-        text = text.replace(phrase, phrase.replace(" ", _NBSP))
     for written, spoken in (say_as or {}).items():   # a name inside a phrase: no pause around it
         text = _re.sub(f" ?{_re.escape(written)}", lambda m: m.group().replace(written, spoken)
                        .replace(" ", _NBSP), text)
+    for phrase in keep_together:
+        text = text.replace(phrase, phrase.replace(" ", _NBSP))
     text = _re.sub(r"\b\d{3}-x{3}-(\d{4})\b", "ที่ลงท้ายด้วย ⟦\\1⟧", text)            # masked phone
+    text = _re.sub(r"(ลงท้าย(?:ด้วย)?)\s*(\d{3,6})\b", "\\1 ⟦\\2⟧", text)              # card/account ends 7788
     text = _re.sub(r"^\s*(\d+)\.\s+", r"ข้อ \1 ", text, flags=_re.M)                # "1. ..." list items
     text = _re.sub(r"(\d{1,2}):(\d{2})\s*(?:น\.)?", _time, text)                     # 08:00 น.
     text = _re.sub(r"(\d[\d,]*)(?:\.(\d{2}))?\s*บาท", _money, text)                  # 1,250.50 บาท
@@ -94,14 +96,16 @@ def speech_text(text: str, say_as=None, keep_together=()) -> str:
     text = _re.sub(r"[()\"“”]", " ", text)
     text = _re.sub(r"[ \t]+", " ", text).strip()
     # Pauses, before numbers are spelled out (so the digit words are not split up).
-    text = _re.sub(r"(ค่ะ|คะ|ครับ|จ้ะ|จ้า)\s*\n\s*|(ค่ะ|คะ|ครับ|จ้ะ|จ้า) ", lambda m: (m.group(1) or m.group(2)) + ". ", text)
+    text = _re.sub(f"(ค่ะ|คะ|ครับ|จ้ะ|จ้า)\\s*\\n\\s*|(ค่ะ|คะ|ครับ|จ้ะ|จ้า)[ {_NBSP}]",
+                   lambda m: (m.group(1) or m.group(2)) + ". ", text)
     text = _re.sub(r"\s*\n\s*", ". ", text)
     text = _re.sub(f"(?<=[{_THAI}]) (?=[{_THAI}])(?!(?:ค่ะ|คะ|ครับ|จ้ะ|จ้า)(?:[.,\\s]|$))", ", ", text)
     # Codes said one character at a time: phone/order/ticket/tracking numbers.
     # ⟪ marks the end of a spelled number: a pause there when the sentence goes on in Thai.
     text = _re.sub(r"⟦(\d+)⟧", lambda m: " ".join(_DIGIT[int(c)] for c in m.group(1)) + "⟪", text)
     text = _re.sub(r"\b[A-Za-z]{1,4}\d{3,}[A-Za-z]{0,3}\b", lambda m: _spell(m.group()) + "⟪", text)
-    text = _re.sub(r"(?<![\d,.])\d(?:[\d\-]*\d){4,}(?![\d,.])", lambda m: _spell(m.group()) + "⟪", text)
+    # ...but not an amount of money: "37550 บาท" is read as a number.
+    text = _re.sub(r"(?<![\d,.])\d(?:[\d\-]*\d){4,}(?![\d,.])(?!\s*บาท)", lambda m: _spell(m.group()) + "⟪", text)
     text = _re.sub(f"⟪ (?=[{_THAI}])(?!(?:ค่ะ|คะ|ครับ|จ้ะ|จ้า)(?:[.\\s]|$))", ", ", text).replace("⟪", "")
     text = text.replace(_NBSP, " ")
     return _re.sub(r"\s+", " ", text).strip()
