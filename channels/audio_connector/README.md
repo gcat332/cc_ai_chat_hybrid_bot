@@ -157,13 +157,63 @@ For a fixed address on your own domain, create a named tunnel in the Cloudflare 
 (Zero Trust → Networks → Tunnels) that routes your domain to `http://localhost:8080`. Cloudflare
 carries WebSockets with no extra settings.
 
-**C. Caddy** (if you want a proxy, but simpler than nginx)
+**C. Caddy** (for example when the server already runs Caddy, as AgentHub does)
+
+Caddy already manages the certificate and passes WebSockets through, so only a few lines are
+needed. Run the bot on localhost only, so it is reachable through Caddy alone. Check first that
+port 8080 is free (`ss -ltnp | grep 8080`); otherwise pick another `PORT`.
 
 ```bash
-caddy reverse-proxy --from voicebot.example.com --to localhost:8080
+# in /etc/thai-voicebot.env: no TLS settings, PORT=8080
+python -m channels.audio_connector.server --host 127.0.0.1    # or the systemd unit with --host 127.0.0.1
 ```
 
-Caddy gets and renews the certificate by itself, and carries WebSockets.
+Then add one of these to the Caddyfile (usually `/etc/caddy/Caddyfile`):
+
+*Same domain as AgentHub* (no new DNS record): add a `handle` block inside the existing site.
+
+```caddy
+agenthub.example.com {
+    handle /audiohook* {
+        reverse_proxy 127.0.0.1:8080 {
+            stream_close_delay 10m   # a Caddy reload does not cut calls in progress
+        }
+    }
+
+    # ... AgentHub's existing lines stay as they are ...
+}
+```
+
+Genesys Base Connection URI: `wss://agenthub.example.com/audiohook`
+
+*Own subdomain* (needs a DNS record such as `voicebot.example.com` pointing at the server):
+
+```caddy
+voicebot.example.com {
+    reverse_proxy 127.0.0.1:8080 {
+        stream_close_delay 10m
+    }
+}
+```
+
+Genesys Base Connection URI: `wss://voicebot.example.com/audiohook`
+
+Check and apply without downtime:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+curl https://agenthub.example.com/audiohook     # answers "Invalid API key": Caddy reaches the bot
+```
+
+If AgentHub's existing lines already wrap everything in `handle { ... }` or use `route`, put the
+`/audiohook*` block before them, so that `/audiohook` is not sent to AgentHub.
+
+**If Caddy runs in Docker,** `127.0.0.1` means the Caddy container itself, not the server. Use
+`reverse_proxy host.docker.internal:8080` and give the Caddy container
+`extra_hosts: ["host.docker.internal:host-gateway"]` (docker compose), with the bot listening on
+`--host 0.0.0.0` and the firewall keeping port 8080 closed to the internet. Or run the bot as a
+container on the same Docker network and use `reverse_proxy voicebot:8080`.
 
 ## 3. Genesys Cloud
 
