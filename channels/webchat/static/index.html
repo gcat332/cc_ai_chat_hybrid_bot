@@ -35,7 +35,11 @@
   form button { background: var(--brand); color: #fff; border: 0; border-radius: 20px;
                 padding: 0 18px; font: inherit; cursor: pointer; }
   form button:disabled, input:disabled { opacity: .5; }
-  .icon { border: 0; background: transparent; font-size: 20px; cursor: pointer; padding: 0 6px; }
+  .icon { border: 0; background: transparent; font-size: 20px; cursor: pointer; padding: 0 6px;
+          display: inline-flex; align-items: center; justify-content: center; }
+  .i { width: 1em; height: 1em; display: block; fill: none; stroke: currentColor; stroke-width: 2;
+       stroke-linecap: round; stroke-linejoin: round; }
+  .i-fill { fill: currentColor; stroke: none; }
   header > div { flex: 1; }
   header .icon { color: #fff; }
   .rate { border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; border-radius: 12px;
@@ -56,7 +60,7 @@
   #callScreen[hidden] { display: none; }
   .call-name { font-size: 22px; font-weight: 600; margin-top: 8px; }
   #callTimer { font-variant-numeric: tabular-nums; opacity: .85; margin-top: 2px; }
-  .avatar { width: 116px; height: 116px; border-radius: 50%; margin: 26px 0 14px; font-size: 54px;
+  .avatar { width: 116px; height: 116px; border-radius: 50%; margin: 26px 0 14px; font-size: 50px;
             display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.15); }
   #callScreen[data-state="listening"] .avatar { animation: ring 1.4s ease-out infinite; }
   #callScreen[data-state="speaking"] .avatar { animation: talk .9s ease-in-out infinite; }
@@ -77,27 +81,39 @@
   #keypad button { height: 54px; border-radius: 27px; border: 0; font: inherit; font-size: 22px;
                    background: rgba(255,255,255,.16); color: #fff; cursor: pointer; }
   #keypad button.ok { background: #7CFC9A; color: #063f2d; font-size: 16px; font-weight: 600; }
+  #keypad button.del { font-size: 16px; }
   .controls { display: flex; gap: 26px; align-items: flex-start; }
   .controls button { width: 64px; height: 64px; border-radius: 50%; border: 0; font-size: 26px;
-                     background: rgba(255,255,255,.16); color: #fff; cursor: pointer; }
+                     background: rgba(255,255,255,.16); color: #fff; cursor: pointer;
+                     display: flex; align-items: center; justify-content: center; }
   .controls button[aria-pressed="true"] { background: #fff; color: #063f2d; }
   .controls #hangup { background: #d93025; transform: rotate(135deg); }  /* receiver down */
   .controls label { display: block; text-align: center; font-size: 12px; margin-top: 6px; opacity: .9; }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-list" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2.5h6v3H9zM9 11h6M9 15h6"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-volume-on" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+  <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m23 9-6 6M17 9l6 6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M15 9.3V5a3 3 0 0 0-5.9-.6M9 9v2a3 3 0 0 0 5.1 2.1M17 16.9A7 7 0 0 1 5 11v-1m14 0v1a7 7 0 0 1-.1 1.2M12 18v4M8 22h8"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></symbol>
+  <symbol id="i-keypad" viewBox="0 0 24 24"><g class="i-fill"><circle cx="6" cy="5" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="18" cy="5" r="1.6"/><circle cx="6" cy="11" r="1.6"/><circle cx="12" cy="11" r="1.6"/><circle cx="18" cy="11" r="1.6"/><circle cx="6" cy="17" r="1.6"/><circle cx="12" cy="17" r="1.6"/><circle cx="18" cy="17" r="1.6"/><circle cx="12" cy="22" r="1.6"/></g></symbol>
+</svg>
 <div class="chat">
   <header><span class="dot"></span><div><h1>ศูนย์บริการลูกค้า</h1><small>ผู้ช่วยอัตโนมัติ · พิมพ์หรือพูดก็ได้</small></div>
-    <a href="admin.html" class="icon" title="ดูและแก้ไขข้อมูลลูกค้า" style="text-decoration:none">📋</a>
-    <button id="callBtn" class="icon" type="button" title="โทรคุยกับผู้ช่วย" hidden disabled>📞</button>
-    <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ">🔈</button>
+    <a href="admin.html" class="icon" title="ดูและแก้ไขข้อมูลลูกค้า" aria-label="ข้อมูลลูกค้า" style="text-decoration:none"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg></a>
+    <button id="callBtn" class="icon" type="button" title="โทรคุยกับผู้ช่วย" aria-label="โทรคุยกับผู้ช่วย" hidden disabled><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg></button>
+    <button id="speak" class="icon" type="button" aria-pressed="false" title="เปิดเสียงตอบกลับ" aria-label="เสียงตอบกลับ"><svg class="i" aria-hidden="true"><use href="#i-volume-off"/></svg></button>
     <select class="rate" aria-label="ความเร็วเสียง" title="ความเร็วเสียง">
       <option value="slow">ช้า</option><option value="normal">ปกติ</option><option value="fast">เร็ว</option>
     </select></header>
   <div id="log" aria-live="polite"></div>
   <div id="quick"></div>
   <form id="form">
-    <button id="mic" class="icon" type="button" aria-pressed="false" title="แตะเพื่อพูด หรือกดค้างไว้แล้วปล่อยเพื่อส่ง">🎤</button>
+    <button id="mic" class="icon" type="button" aria-pressed="false" title="แตะเพื่อพูด หรือกดค้างไว้แล้วปล่อยเพื่อส่ง" aria-label="พูด"><svg class="i" aria-hidden="true"><use href="#i-mic"/></svg></button>
     <input id="text" autocomplete="off" placeholder="พิมพ์ข้อความ หรือกดไมค์เพื่อพูด" aria-label="ข้อความ">
     <button>ส่ง</button>
   </form>
@@ -108,7 +124,7 @@
   <select class="rate" aria-label="ความเร็วเสียง" title="ความเร็วเสียง" style="margin-top:8px">
     <option value="slow">เสียงช้า</option><option value="normal">เสียงปกติ</option><option value="fast">เสียงเร็ว</option>
   </select>
-  <div class="avatar" aria-hidden="true">🎧</div>
+  <div class="avatar" aria-hidden="true"><svg class="i" aria-hidden="true"><use href="#i-headset"/></svg></div>
   <div id="callStatus" aria-live="polite">กำลังเชื่อมต่อ…</div>
   <div class="caption">
     <div id="callCaption"></div>
@@ -120,9 +136,9 @@
     <div id="digits" aria-live="polite"></div>
   </div>
   <div class="controls">
-    <div><button id="muteBtn" type="button" aria-pressed="false" aria-label="ปิดไมค์">🎙️</button><label>ปิดไมค์</label></div>
-    <div><button id="keypadBtn" type="button" aria-pressed="false" aria-label="แป้นตัวเลข">⌨️</button><label>แป้นตัวเลข</label></div>
-    <div><button id="hangup" type="button" aria-label="วางสาย">📞</button><label>วางสาย</label></div>
+    <div><button id="muteBtn" type="button" aria-pressed="false" aria-label="ปิดไมค์"><svg class="i" aria-hidden="true"><use href="#i-mic"/></svg></button><label>ปิดไมค์</label></div>
+    <div><button id="keypadBtn" type="button" aria-pressed="false" aria-label="แป้นตัวเลข"><svg class="i" aria-hidden="true"><use href="#i-keypad"/></svg></button><label>แป้นตัวเลข</label></div>
+    <div><button id="hangup" type="button" aria-label="วางสาย"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg></button><label>วางสาย</label></div>
   </div>
 </div>
 <script src="runtime.js"></script>
@@ -313,9 +329,11 @@ if (canSpeak) {
   onVoicesChanged(pickThaiVoice);
 } else speakBtn.hidden = true;
 
+function setIcon(button, name) { button.querySelector("use").setAttribute("href", "#i-" + name); }
+
 function setSpeak(on) {
   speakOn = on && canSpeak;
-  speakBtn.textContent = speakOn ? "🔊" : "🔈";
+  setIcon(speakBtn, speakOn ? "volume-on" : "volume-off");
   speakBtn.setAttribute("aria-pressed", speakOn);
   speakBtn.title = speakOn ? "ปิดเสียงตอบกลับ" : "เปิดเสียงตอบกลับ";
   if (!speakOn) cancelSpeech();
@@ -524,7 +542,7 @@ function callError(code) {
 function setMuted(on) {
   muted = on;
   muteBtn.setAttribute("aria-pressed", on);
-  muteBtn.textContent = on ? "🔇" : "🎙️";
+  setIcon(muteBtn, on ? "mic-off" : "mic");
   if (on) stopListening();                    // the mic goes off now
   else if (wakeHear) wakeHear(null);          // start listening again
 }
@@ -619,7 +637,7 @@ async function startCall() {
   sessionId = crypto.randomUUID();          // a call is a new conversation
   sessionStorage.setItem("chat_session", sessionId);
   quick.innerHTML = "";
-  note("📞 เริ่มการโทร");
+  note("เริ่มการโทร");
   await voicesReady(); pickThaiVoice();
   if (voiceState === "none") { callErrorEl.textContent = NO_THAI_VOICE; warnNoThaiVoice(); }
   else if (IN_APP) callErrorEl.textContent = "แอปนี้อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้เปิดในเบราว์เซอร์";
@@ -638,13 +656,14 @@ function hangUp() {
   input.focus();
 }
 
-// Keypad: digits, ⌫, and ส่ง (like # on a phone).
-for (const k of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "ส่ง"]) {
+// Keypad: digits, ลบ (backspace) and ส่ง (like # on a phone).
+for (const k of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "ลบ", "0", "ส่ง"]) {
   const b = document.createElement("button");
   b.type = "button"; b.textContent = k;
   if (k === "ส่ง") b.className = "ok";
+  if (k === "ลบ") b.className = "del";
   b.onclick = () => {
-    if (k === "⌫") digits = digits.slice(0, -1);
+    if (k === "ลบ") digits = digits.slice(0, -1);
     else if (k === "ส่ง") { if (digits) { inject(digits); digits = ""; } }
     else { digits += k; cancelSpeech(); }  // typing interrupts the bot, like a phone menu
     digitsEl.textContent = digits;
@@ -664,7 +683,7 @@ async function init() {
   await voicesReady(); if (canSpeak) pickThaiVoice();
   log.lastChild.remove();  // the loading note
   if (runtime.mode === "browser") {
-    note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลเก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ดู/แก้ได้ที่ 📋 ข้อมูล)");
+    note("โหมดสาธิต: ระบบทำงานในเบราว์เซอร์ ข้อมูลเก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ดู/แก้ได้ที่ปุ่มข้อมูลลูกค้า มุมขวาบน)");
     addEventListener("storage", () => runtime.reload());  // rows edited in the admin tab
   }
   show(await call("api/start", {}));

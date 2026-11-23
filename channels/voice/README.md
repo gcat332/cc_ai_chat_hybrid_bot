@@ -1,6 +1,6 @@
 # Phase 2: phone line (plan)
 
-Voice **in the web chat** already works (🎤 button, browser speech, see the main README). This
+Voice **in the web chat** already works (mic button, browser speech, see the main README). This
 plan is for customers who **call a phone number**. That needs a telephony provider and
 server-side speech services, because there is no browser on a phone call.
 
