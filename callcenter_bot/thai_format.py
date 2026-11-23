@@ -6,8 +6,13 @@ MONTHS = [
 ]
 
 
-def thai_date(d) -> str:
-    """date(2026, 12, 5) -> "5 ธันวาคม 2569" (Buddhist year)."""
+def thai_date(d, today=None) -> str:
+    """date(2026, 12, 5) -> "5 ธันวาคม 2569" (Buddhist year). Within about six months of today the
+    year is left out, as people say it: "5 ธันวาคม"."""
+    from datetime import date
+    today = today or date.today()
+    if abs((d - today).days) <= 180:
+        return f"{d.day} {MONTHS[d.month - 1]}"
     return f"{d.day} {MONTHS[d.month - 1]} {d.year + 543}"
 
 
@@ -79,7 +84,7 @@ def speech_text(text: str, say_as=None, keep_together=()) -> str:
     for phrase in keep_together:
         text = text.replace(phrase, phrase.replace(" ", _NBSP))
     for written, spoken in (say_as or {}).items():   # a name inside a phrase: no pause around it
-        text = _re.sub(f" ?{_re.escape(written)} ?", lambda m: m.group().replace(written, spoken)
+        text = _re.sub(f" ?{_re.escape(written)}", lambda m: m.group().replace(written, spoken)
                        .replace(" ", _NBSP), text)
     text = _re.sub(r"\b\d{3}-x{3}-(\d{4})\b", "ที่ลงท้ายด้วย ⟦\\1⟧", text)            # masked phone
     text = _re.sub(r"^\s*(\d+)\.\s+", r"ข้อ \1 ", text, flags=_re.M)                # "1. ..." list items
@@ -91,7 +96,7 @@ def speech_text(text: str, say_as=None, keep_together=()) -> str:
     # Pauses, before numbers are spelled out (so the digit words are not split up).
     text = _re.sub(r"(ค่ะ|คะ|ครับ|จ้ะ|จ้า)\s*\n\s*|(ค่ะ|คะ|ครับ|จ้ะ|จ้า) ", lambda m: (m.group(1) or m.group(2)) + ". ", text)
     text = _re.sub(r"\s*\n\s*", ". ", text)
-    text = _re.sub(f"(?<=[{_THAI}]) (?=[{_THAI}])", ", ", text)
+    text = _re.sub(f"(?<=[{_THAI}]) (?=[{_THAI}])(?!(?:ค่ะ|คะ|ครับ|จ้ะ|จ้า)(?:[.,\\s]|$))", ", ", text)
     # Codes said one character at a time: phone/order/ticket/tracking numbers.
     # ⟪ marks the end of a spelled number: a pause there when the sentence goes on in Thai.
     text = _re.sub(r"⟦(\d+)⟧", lambda m: " ".join(_DIGIT[int(c)] for c in m.group(1)) + "⟪", text)

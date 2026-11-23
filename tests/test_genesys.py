@@ -36,7 +36,7 @@ class ConnectorTest(unittest.TestCase):
 
         out = self.send("อยากเช็คยอดค้างชำระครับ")
         self.assertEqual(out["parameters"]["expectsDigits"], "true")
-        self.assertIn("ศูนย์ แปด หนึ่ง", out["replymessages"][0]["text"])  # example number read digit by digit
+        self.assertIn("เบอร์โทรศัพท์", out["replymessages"][0]["text"])
 
         out = self.send("ศูนย์หกสาม หกห้าสาม แปดเก้าสามเก้า")            # how speech recognition may write it
         self.assertIn("4 ตัวท้าย", out["replymessages"][0]["text"])
@@ -55,8 +55,14 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual((out["botState"], out["intent"]), ("COMPLETE", "end-conversation"))
 
     def test_text_format_for_chat_flows(self):
-        out = self.send("เช็คยอด", replyFormat="text")
-        self.assertIn("0812345678", out["replymessages"][0]["text"])   # as written, for a chat window
+        out = self.send("ติดตามพัสดุ 123456", replyFormat="text")
+        self.assertIn("คำสั่งซื้อ 123456", out["replymessages"][0]["text"])   # as written, for a chat window
+        self.assertIn("KEX0099887766", out["replymessages"][0]["text"])
+
+    def test_speech_format_for_voice_flows(self):
+        out = self.send("ติดตามพัสดุ 123456")
+        self.assertIn("หนึ่ง สอง สาม, สี่ ห้า หก", out["replymessages"][0]["text"])  # digit by digit
+        self.assertNotIn("KEX", out["replymessages"][0]["text"])   # long tracking code is not read out
 
     def test_sessions_are_separate(self):
         self.send("เช็คยอด", session="a")

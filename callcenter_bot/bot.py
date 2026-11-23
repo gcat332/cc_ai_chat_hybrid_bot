@@ -88,8 +88,8 @@ class Bot:
             return reply
 
     def welcome(self) -> Reply:
-        return Reply(f"สวัสดี{P} ยินดีต้อนรับสู่ศูนย์บริการลูกค้า {config.BRAND} "
-                     f"{ME}เป็นผู้ช่วยอัตโนมัติ ต้องการให้ช่วยเรื่องใด{Q}",
+        return Reply(f"สวัสดี{P} {config.BRAND} ยินดีให้บริการ{P} {ME}เป็นผู้ช่วยอัตโนมัติ "
+                     f"มีอะไรให้ช่วย{Q}",
                      config.MAIN_MENU, "greeting")
 
     def reset(self, session_id: str):
@@ -99,14 +99,14 @@ class Bot:
     # ---- turn logic ---------------------------------------------------------------------
     def _reply(self, s: Session, session_id: str, message: str) -> Reply:
         if not normalize(message):
-            return Reply(f"บอกสิ่งที่ต้องการให้ช่วยได้เลย{P}", config.MAIN_MENU)
+            return Reply(f"มีอะไรให้ช่วย{Q}", config.MAIN_MENU)
 
         intent, _ = detect(message)
         if intent == "agent":
             return self._handoff(s)
         if s.flow and is_cancel(message):
             s.leave_flow()
-            return Reply(f"ยกเลิกรายการแล้ว{P} มีเรื่องอื่นให้ช่วยไหม{Q}", config.MAIN_MENU, "cancel")
+            return Reply(f"ยกเลิกให้แล้ว{P} มีอะไรให้ช่วยอีกไหม{Q}", config.MAIN_MENU, "cancel")
         if s.flow:
             reply = self._continue_flow(s, message, intent)
             if reply:
@@ -132,17 +132,17 @@ class Bot:
             return None
         s.retries += 1
         if s.retries > config.MAX_MISUNDERSTOOD:
-            return Reply(f"ขออภัย{P} {ME}ยังไม่ได้ข้อมูลที่ต้องการ ต้องการคุยกับเจ้าหน้าที่ไหม{Q}",
+            return Reply(f"ขออภัย{P} ให้เจ้าหน้าที่ช่วยดูต่อไหม{Q}",
                          ["คุยกับเจ้าหน้าที่", "ยกเลิก"], s.flow)
         return self._ask(s)
 
     def _ask(self, s: Session) -> Reply:
         prompts = {
-            "need_phone": f"รบกวนแจ้งเบอร์โทรศัพท์ที่ลงทะเบียนไว้ 10 หลัก{P} เช่น 0812345678",
-            "need_id4": f"เพื่อยืนยันตัวตน รบกวนแจ้งเลข 4 ตัวท้ายของบัตรประชาชน{P}",
-            "need_order": f"รบกวนแจ้งเลขคำสั่งซื้อ 6 หลัก{P} เช่น 123456",
-            "need_problem": f"รบกวนเล่าอาการหรือปัญหาที่พบสั้น ๆ {P} เช่น อินเทอร์เน็ตหลุดบ่อยตั้งแต่เมื่อวาน",
-            "confirm_problem": f"รบกวนตอบ ใช่ หรือ ไม่ใช่{P}",
+            "need_phone": f"ขอเบอร์โทรศัพท์ที่ลงทะเบียนไว้ด้วย{P}",
+            "need_id4": f"ขอเลขบัตรประชาชน 4 ตัวท้าย เพื่อยืนยันตัวตนด้วย{P}",
+            "need_order": f"ขอเลขคำสั่งซื้อ 6 หลักด้วย{P}",
+            "need_problem": f"เล่าปัญหาที่พบให้ฟังหน่อย{P}",
+            "confirm_problem": f"ใช่ หรือไม่ใช่{Q}",
         }
         quick = ["ใช่", "ไม่ใช่"] if s.step == "confirm_problem" else ["ยกเลิก"]
         return Reply(prompts[s.step], quick, s.flow)
@@ -159,7 +159,7 @@ class Bot:
         phone = m.group()
         if not backend.find_customer(phone):
             s.retries += 1
-            return Reply(f"ไม่พบหมายเลข {mask_phone(phone)} ในระบบ{P} รบกวนตรวจสอบแล้วแจ้งอีกครั้ง{P}",
+            return Reply(f"ไม่พบเบอร์ {mask_phone(phone)} ในระบบ{P} ขอเบอร์อีกครั้งได้ไหม{Q}",
                          ["คุยกับเจ้าหน้าที่", "ยกเลิก"], s.flow)
         s.slots["phone"], s.step, s.retries = phone, "need_id4", 0
         return self._ask(s)
@@ -174,9 +174,9 @@ class Bot:
         s.verify_attempts += 1
         if s.verify_attempts >= config.MAX_VERIFY_ATTEMPTS:
             s.leave_flow()
-            return Reply(f"ข้อมูลยืนยันตัวตนไม่ถูกต้องหลายครั้ง เพื่อความปลอดภัยของบัญชี "
-                         f"{ME}ขอโอนให้เจ้าหน้าที่ดูแลต่อ{P}", [], "verify_failed", handoff=True)
-        return Reply(f"ข้อมูลไม่ตรงกับในระบบ{P} รบกวนตรวจสอบเลข 4 ตัวท้ายของบัตรประชาชนอีกครั้ง{P}",
+            return Reply(f"ยืนยันตัวตนไม่สำเร็จ{P} เพื่อความปลอดภัย ขอโอนให้เจ้าหน้าที่ดูแลต่อนะ{Q}",
+                         [], "verify_failed", handoff=True)
+        return Reply(f"เลขไม่ตรงกับในระบบ{P} ขอเลขบัตร 4 ตัวท้ายอีกครั้ง{P}",
                      ["ยกเลิก"], s.flow)
 
     def _step_need_order(self, s: Session, message: str) -> Optional[Reply]:
@@ -186,27 +186,28 @@ class Bot:
         order = backend.get_order(m.group())
         if not order:
             s.retries += 1
-            return Reply(f"ไม่พบคำสั่งซื้อเลข {m.group()} {P} รบกวนตรวจสอบแล้วแจ้งอีกครั้ง{P}",
+            return Reply(f"ไม่พบคำสั่งซื้อ {m.group()} {P} ขอเลขอีกครั้งได้ไหม{Q}",
                          ["คุยกับเจ้าหน้าที่", "ยกเลิก"], s.flow)
         s.leave_flow()
-        text = f"คำสั่งซื้อเลข {m.group()} สถานะ: {order['status']}"
-        if order["carrier"]:
-            text += f" จัดส่งโดย {order['carrier']}"
-            if order["tracking"]:
-                text += f" เลขพัสดุ {order['tracking']}"
-        if not order["eta"]:
-            text += f" {P}"
-        elif order["status"].startswith("จัดส่งสำเร็จ"):
-            text += f" เมื่อวันที่ {thai_date(order['eta'])} {P}"
-        else:
-            text += f" คาดว่าจะได้รับภายในวันที่ {thai_date(order['eta'])} {P}"
-        return Reply(text, ["ติดตามคำสั่งซื้ออื่น", "แจ้งปัญหา", "จบการสนทนา"], "order_status")
+        delivered = order["status"].startswith("จัดส่งสำเร็จ")
+        said = f"คำสั่งซื้อ {m.group()} {order['status']}"
+        if delivered and order["eta"]:
+            said += f"เมื่อวันที่ {thai_date(order['eta'])}"
+        elif order["carrier"]:
+            said += f"โดย {order['carrier']}"
+        said += P if "\u0e00" <= said[-1] <= "\u0e7f" else f" {P}"   # "...Express ค่ะ", "...สินค้าค่ะ"
+        if order["eta"] and not delivered:
+            said += f" คาดว่าจะได้รับวันที่ {thai_date(order['eta'])}{P}"
+        # The tracking number is shown, not read out: a long code is hard to follow by ear.
+        text = said + (f"\nเลขพัสดุ {order['tracking']}" if order["tracking"] else "")
+        return Reply(text, ["ติดตามคำสั่งซื้ออื่น", "แจ้งปัญหา", "จบการสนทนา"], "order_status",
+                     speech=speech_text(said, config.SAY_AS, keep_together=(config.BRAND,)))
 
     def _step_need_problem(self, s: Session, message: str) -> Optional[Reply]:
         if len(compact(message)) < 4:
             return None
         s.slots["problem"], s.step = strip_particles(normalize(message)), "confirm_problem"
-        return Reply(f"สรุปปัญหา: \"{s.slots['problem']}\" ถูกต้องไหม{Q}", ["ใช่", "ไม่ใช่"], s.flow)
+        return Reply(f"สรุปว่า {s.slots['problem']} ใช่ไหม{Q}", ["ใช่", "ไม่ใช่"], s.flow)
 
     def _step_confirm_problem(self, s: Session, message: str) -> Optional[Reply]:
         answer = yes_no(message)
@@ -217,8 +218,7 @@ class Bot:
             return self._ask(s)
         ticket = backend.create_ticket(s.verified_phone, s.slots["problem"])
         s.leave_flow()
-        return Reply(f"รับเรื่องเรียบร้อยแล้ว{P} หมายเลขเรื่องของคุณคือ {ticket} "
-                     f"เจ้าหน้าที่จะติดต่อกลับภายใน 24 ชั่วโมง{P}",
+        return Reply(f"รับเรื่องแล้ว{P} เลขที่เรื่อง {ticket} เจ้าหน้าที่จะติดต่อกลับภายใน 24 ชั่วโมง{P}",
                      ["เช็คยอดค้างชำระ", "จบการสนทนา"], "ticket_created")
 
     def _finish(self, s: Session) -> Reply:
@@ -227,15 +227,15 @@ class Bot:
         s.leave_flow()
         if flow == "check_balance":
             return self._balance(s)
-        return Reply(f"ยืนยันตัวตนเรียบร้อย{P} มีอะไรให้ช่วยไหม{Q}", config.MAIN_MENU)
+        return Reply(f"ยืนยันตัวตนแล้ว{P} มีอะไรให้ช่วย{Q}", config.MAIN_MENU)
 
     def _balance(self, s: Session) -> Reply:
         c = backend.find_customer(s.verified_phone)
         if c["balance"] > 0:
             text = f"คุณ{c['name']} มียอดค้างชำระ {baht(c['balance'])} "
-            text += f"ครบกำหนดชำระวันที่ {thai_date(c['due'])} {P}" if c["due"] else P
+            text += f"ครบกำหนดวันที่ {thai_date(c['due'])}{P}" if c["due"] else P
         else:
-            text = f"คุณ{c['name']} ไม่มียอดค้างชำระ{P} ขอบคุณที่ชำระตรงเวลา{P}"
+            text = f"คุณ{c['name']} ไม่มียอดค้างชำระ{P}"
         return Reply(text, ["ช่องทางชำระเงิน", "แจ้งปัญหา", "จบการสนทนา"], "check_balance")
 
     # ---- topics -------------------------------------------------------------------------
@@ -260,28 +260,26 @@ class Bot:
         return self._ask(s)
 
     def _on_payment_channels(self, s, message):
-        lines = "\n".join(f"{i}. {c}" for i, c in enumerate(config.PAYMENT_CHANNELS, 1))
-        return Reply(f"ชำระเงินได้ทางช่องทางต่อไปนี้{P}\n{lines}",
+        *first, last = config.PAYMENT_CHANNELS
+        return Reply(f"ชำระได้ทาง{' '.join(first)} หรือ{last}{P}",
                      ["เช็คยอดค้างชำระ", "จบการสนทนา"], "payment_channels")
 
     def _on_hours(self, s, message):
-        return Reply(f"เจ้าหน้าที่ให้บริการ{config.HOURS_TEXT} ส่วนผู้ช่วยอัตโนมัติให้บริการตลอด 24 ชั่วโมง{P}",
+        return Reply(f"เจ้าหน้าที่ให้บริการ{config.HOURS_TEXT}{P}",
                      config.MAIN_MENU, "hours")
 
     def _on_thanks(self, s, message):
-        return Reply(f"ยินดี{P} มีอะไรให้ช่วยเพิ่มเติมไหม{Q}", config.MAIN_MENU + ["จบการสนทนา"], "thanks")
+        return Reply(f"ยินดี{P} มีอะไรให้ช่วยอีกไหม{Q}", config.MAIN_MENU + ["จบการสนทนา"], "thanks")
 
     def _on_goodbye(self, s, message):
-        return Reply(f"ขอบคุณที่ใช้บริการ {config.BRAND} {P} ขอให้เป็นวันที่ดี{P}", [], "goodbye", end=True)
+        return Reply(f"ขอบคุณที่ติดต่อนะ{Q} สวัสดี{P}", [], "goodbye", end=True)
 
     def _on_agent(self, s, message):
         return self._handoff(s)
 
     def _handoff(self, s: Session) -> Reply:
         s.leave_flow()
-        return Reply(f"{ME}กำลังโอนสายให้เจ้าหน้าที่ รบกวนรอสักครู่{P} "
-                     f"(เวลาทำการ: {config.HOURS_TEXT} หรือโทร {config.HOTLINE})",
-                     [], "agent", handoff=True)
+        return Reply(f"กำลังโอนให้เจ้าหน้าที่ รอสักครู่นะ{Q}", [], "agent", handoff=True)
 
     def _not_understood(self, s: Session, message: str) -> Reply:
         if self.fallback:
@@ -291,9 +289,9 @@ class Bot:
                 return Reply(text, config.MAIN_MENU, "fallback")
         s.misunderstood += 1
         if s.misunderstood >= config.MAX_MISUNDERSTOOD:
-            return Reply(f"ขออภัย{P} {ME}ยังไม่เข้าใจคำถามนี้ ต้องการให้เจ้าหน้าที่ช่วยไหม{Q}",
+            return Reply(f"ขออภัย{P} ยังไม่เข้าใจ ให้เจ้าหน้าที่ช่วยไหม{Q}",
                          ["คุยกับเจ้าหน้าที่"] + config.MAIN_MENU[:3], "not_understood")
-        return Reply(f"ขออภัย{P} {ME}ยังไม่เข้าใจ รบกวนเลือกหัวข้อด้านล่าง หรือพูดหรือพิมพ์ใหม่อีกครั้ง{P}",
+        return Reply(f"ขออภัย{P} ช่วยบอกอีกครั้งได้ไหม{Q}",
                      config.MAIN_MENU, "not_understood")
 
     def _expire_old_sessions(self):

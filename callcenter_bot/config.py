@@ -7,14 +7,14 @@ STATEMENT_PARTICLE = "ค่ะ"
 QUESTION_PARTICLE = "คะ"
 SELF = "ดิฉัน"  # "ผม" for a male voice
 
-HOURS_TEXT = "จันทร์ถึงศุกร์ 08:00–20:00 น. และเสาร์–อาทิตย์ 09:00–18:00 น."
+HOURS_TEXT = "จันทร์ถึงศุกร์ 8 โมงเช้าถึง 2 ทุ่ม เสาร์อาทิตย์ 9 โมงเช้าถึง 6 โมงเย็น"
 HOTLINE = "02-123-4567"
 
-PAYMENT_CHANNELS = [
-    "แอปธนาคารผ่านพร้อมเพย์ หรือสแกน QR บนใบแจ้งหนี้",
+PAYMENT_CHANNELS = [          # read as one sentence: keep each short
+    "แอปธนาคารหรือพร้อมเพย์",
     "เคาน์เตอร์เซอร์วิส 7-Eleven",
-    "หักบัญชีธนาคารอัตโนมัติ",
-    "บัตรเครดิตผ่านเว็บไซต์",
+    "หักบัญชีอัตโนมัติ",
+    "บัตรเครดิตบนเว็บไซต์",
 ]
 
 # Names text-to-speech mispronounces, and how they should sound.

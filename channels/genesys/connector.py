@@ -37,7 +37,7 @@ INTENT_HANDOFF = "live-agent-handoff"
 INTENT_END = "end-conversation"
 log = logging.getLogger("genesys")
 
-APOLOGY = "ขออภัยค่ะ ระบบขัดข้องชั่วคราว ขอโอนสายให้เจ้าหน้าที่ดูแลต่อนะคะ"
+APOLOGY = "ขออภัยค่ะ ระบบขัดข้อง ขอโอนให้เจ้าหน้าที่นะคะ"
 
 
 def _response(text: str, state: str, intent: str, parameters: dict = None) -> dict:

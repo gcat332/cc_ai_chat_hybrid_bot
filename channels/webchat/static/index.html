@@ -550,10 +550,7 @@ async function runCall() {
   let reply = await call("api/start", {});
   // The bot's own wording tells us its voice: ครับ or ค่ะ/คะ.
   const [p, q] = reply.text.includes("ครับ") ? ["ครับ", "ครับ"] : ["ค่ะ", "คะ"];
-  const options = (reply.quick_replies || []).filter(x => !x.includes("เจ้าหน้าที่"));
-  const invite = ` พูดได้เลย${p} เช่น ${options.join(" ")} หรือคุยกับเจ้าหน้าที่`;
-  const spokenInvite = `. พูดได้เลย${p}. เช่น ${options.join(", ")}, หรือคุยกับเจ้าหน้าที่`;
-  let speech = { text: reply.text + invite, speech: reply.speech + spokenInvite };
+  let speech = reply;
   let silence = 0;
   add(speech.text, "bot");
   // A line the call itself adds: a pause after each sentence, like the bot's own replies.
@@ -578,9 +575,9 @@ async function runCall() {
     if (!msg) {                                  // silence
       if (muted || !keypad.hidden) continue;     // typing on the keypad is not silence
       silence++;
-      if (silence === 2) speech = line(`ยังอยู่ในสายไหม${q} ถ้าต้องการให้ช่วยเรื่องใด พูดได้เลย${p}`);
+      if (silence === 2) speech = line(`ยังอยู่ในสายไหม${q}`);
       if (silence >= 3) {
-        await say(line(`ไม่ได้ยินเสียง ขออนุญาตวางสายก่อน${p} ขอบคุณที่ติดต่อ${p}`));
+        await say(line(`ไม่ได้ยินเสียงเลย ขอวางสายก่อนนะ${q} ขอบคุณ${p}`));
         return hangUp();
       }
       continue;

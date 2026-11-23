@@ -20,13 +20,13 @@ class DatabaseTest(unittest.TestCase):
 
     def test_test_number_0636538939(self):
         r = self.say("เช็คยอด", "063-653-8939", "8939")
-        self.assertIn("คุณทดสอบ มียอดค้างชำระ 520.75 บาท ครบกำหนดชำระวันที่ 15 ธันวาคม 2569", r.text)
+        self.assertIn("คุณทดสอบ มียอดค้างชำระ 520.75 บาท ครบกำหนดวันที่ 15 ธันวาคม", r.text)
 
     def test_bot_reads_what_the_admin_saved(self):
         db.save_customer({"phone": "091-234-5678", "name": "มานี", "id_last4": "9999",
                           "balance": "2,000.25", "due_date": "2026-12-31"})
         r = self.say("เช็คยอด", "0912345678", "9999")
-        self.assertIn("คุณมานี มียอดค้างชำระ 2,000.25 บาท ครบกำหนดชำระวันที่ 31 ธันวาคม 2569", r.text)
+        self.assertIn("คุณมานี มียอดค้างชำระ 2,000.25 บาท ครบกำหนดวันที่ 31 ธันวาคม", r.text)
 
     def test_balance_change_shows_at_once(self):
         db.save_customer({"phone": "0812345678", "name": "สมชาย", "id_last4": "1234", "balance": 0})
@@ -46,7 +46,7 @@ class DatabaseTest(unittest.TestCase):
     def test_order_without_date_or_tracking(self):
         db.save_order({"order_id": "777777", "status": "รอชำระเงิน"})
         r = self.say("ติดตามพัสดุ", "777777")
-        self.assertEqual(r.text, "คำสั่งซื้อเลข 777777 สถานะ: รอชำระเงิน ค่ะ")
+        self.assertEqual(r.text, "คำสั่งซื้อ 777777 รอชำระเงินค่ะ")
 
     def test_rename_phone_keeps_orders(self):
         db.save_customer({"phone": "0899999999", "name": "สมชาย", "id_last4": "1234", "balance": 1},
@@ -88,7 +88,7 @@ class SpeechTextTest(unittest.TestCase):
         "สวัสดีค่ะ ยินดีต้อนรับ": "สวัสดีค่ะ. ยินดีต้อนรับ",
         "คุณสมชาย มียอดค้างชำระ": "คุณสมชาย, มียอดค้างชำระ",
         "ต่อไปนี้ค่ะ\n1. แอปธนาคาร\n2. 7-Eleven": "ต่อไปนี้ค่ะ. ข้อ 1 แอปธนาคาร. ข้อ 2 เซเว่นอีเลฟเว่น",
-        "สแกน 7-Eleven ที่ร้าน": "สแกน เซเว่นอีเลฟเว่น ที่ร้าน",
+        "สแกน 7-Eleven ที่ร้าน": "สแกน เซเว่นอีเลฟเว่น, ที่ร้าน",
         "บริษัท ตัวอย่าง จำกัด ยินดี": "บริษัท ตัวอย่าง จำกัด, ยินดี",
     }
 

@@ -66,7 +66,7 @@ class ConversationTest(unittest.TestCase):
     def test_balance_needs_verification(self):
         r = self.say("เช็คยอดค้างชำระ", "081-234-5678", "1234")
         self.assertIn("1,250.50 บาท", r.text)
-        self.assertIn("5 ธันวาคม 2569", r.text)
+        self.assertIn("ครบกำหนดวันที่ 5 ธันวาคม", r.text)
         # Verified once per session: asking again answers straight away.
         self.assertIn("1,250.50", self.say("ดูยอดอีกที").text)
 
@@ -86,7 +86,7 @@ class ConversationTest(unittest.TestCase):
 
     def test_unknown_phone(self):
         r = self.say("เช็คยอด", "0800000000")
-        self.assertIn("ไม่พบหมายเลข 080-xxx-0000", r.text)
+        self.assertIn("ไม่พบเบอร์ 080-xxx-0000", r.text)
 
     def test_balance_by_voice(self):
         r = self.say("อยากเช็คยอดค้างชำระ", "ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด", "หนึ่ง สอง สาม สี่")
