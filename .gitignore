@@ -3,3 +3,4 @@ __pycache__/
 _site/
 data/*.db
 voicebot.env
+.venv/
