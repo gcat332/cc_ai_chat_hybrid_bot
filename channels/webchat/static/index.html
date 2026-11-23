@@ -167,8 +167,24 @@ let recognizer = null, listening = false, speakOn = false, voiceTurn = false;
 // Two ways to use the mic:
 // * tap: hands-free. Listens until you pause, sends, and listens again after each spoken reply.
 // * press and hold: push-to-talk. Listens while held, sends when released, no auto-listen after.
-let handsFree = true, holding = false, pressed = false, holdTimer = null;
+let handsFree = true, holding = false, pressed = false, holdTimer = null, warnedInApp = false;
 const HOLD_MS = 350;
+// In-app browsers (LINE, Facebook, Instagram) often show the API but cannot use the mic.
+const IN_APP = /\bLine\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent);
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+// Why recognition failed, in words the customer can act on. Codes from the Web Speech API.
+const MIC_ERRORS = {
+  "not-allowed": IS_IOS
+    ? "ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน: เปิด การตั้งค่า > Safari > ไมโครโฟน และเปิด Siri และการป้อนตามคำบอก (Dictation)"
+    : "ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน: กดรูปแม่กุญแจข้างช่องที่อยู่เว็บ แล้วอนุญาตไมโครโฟน",
+  "service-not-allowed": IS_IOS
+    ? "ใช้การฟังเสียงไม่ได้: เปิด การตั้งค่า > Siri และเปิดการป้อนตามคำบอก (Dictation) ก่อน"
+    : "เบราว์เซอร์นี้ไม่อนุญาตให้ใช้การฟังเสียง ลองเปิดใน Chrome, Edge หรือ Safari",
+  "network": "ระบบแปลงเสียงเชื่อมต่อไม่ได้ เบราว์เซอร์นี้อาจไม่รองรับ (เช่น Brave) หรือเน็ตมีปัญหา ลองใช้ Chrome, Edge หรือ Safari",
+  "audio-capture": "ไม่พบไมโครโฟน ตรวจว่าเสียบไมค์แล้ว และไม่มีแอปอื่นใช้อยู่",
+  "language-not-supported": "เบราว์เซอร์นี้ไม่รองรับการฟังภาษาไทย ลองใช้ Chrome, Edge หรือ Safari",
+  "bad-grammar": "เบราว์เซอร์นี้ฟังเสียงไม่สำเร็จ ลองใช้ Chrome, Edge หรือ Safari",
+};
 let thaiVoice = null, warnedNoVoice = false;
 
 function pickThaiVoice() {
@@ -228,21 +244,37 @@ function listen() {
     }
     input.value = heard + interim;
   };
+  let failed = false, heardSound = false;
+  recognizer.onaudiostart = () => { input.placeholder = holding ? "ไมค์รับเสียงแล้ว… ปล่อยปุ่มเพื่อส่ง" : "ไมค์รับเสียงแล้ว… พูดได้เลย"; };
+  recognizer.onspeechstart = () => { heardSound = true; };
   recognizer.onerror = e => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed")
-      note("ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์");
-    else if (e.error === "no-speech" && !pressed) note("ไม่ได้ยินเสียง กดไมค์แล้วพูดอีกครั้งได้เลย");
+    if (e.error === "aborted") return;
+    if (e.error === "no-speech") {
+      if (!pressed) note("ไม่ได้ยินเสียงพูด ลองพูดใกล้ไมค์อีกครั้งได้เลย");
+      return;
+    }
+    failed = true;  // stop for real: no restart while the button is held
+    note((MIC_ERRORS[e.error] || "ฟังเสียงไม่สำเร็จ ลองใหม่อีกครั้ง หรือพิมพ์แทนได้") + ` (${e.error})`);
   };
   recognizer.onend = () => {
-    if (pressed) {  // the browser stopped at a pause, but the button is still down: keep going
+    if (pressed && !failed) {  // the browser stopped at a pause, but the button is still down: keep going
       try { recognizer.start(); return; } catch { /* fall through and send */ }
     }
     setListening(false);
     if (heard.trim()) send(heard, true);
-    else input.value = "";
+    else {
+      input.value = "";
+      // Sound but no words, e.g. too quiet or too short: say so instead of doing nothing.
+      if (!failed && heardSound) note("ได้ยินเสียงแต่จับคำพูดไม่ได้ ลองพูดช้า ๆ ใกล้ไมค์อีกครั้ง");
+    }
   };
   setListening(true);
-  recognizer.start();
+  try {
+    recognizer.start();
+  } catch (err) {
+    setListening(false);
+    note("เริ่มฟังเสียงไม่สำเร็จ ลองใหม่อีกครั้ง หรือพิมพ์แทนได้");
+  }
 }
 
 function micDown(e) {
@@ -250,6 +282,10 @@ function micDown(e) {
   if (listening) {             // tap while listening: stop and send what was heard
     recognizer.stop();
     return;
+  }
+  if (IN_APP && !warnedInApp) {
+    warnedInApp = true;
+    note("แอปนี้ (เช่น LINE, Facebook) อาจใช้ไมค์ไม่ได้ ถ้าพูดแล้วไม่มีข้อความ ให้กด ⋮ หรือ ··· แล้วเลือก เปิดในเบราว์เซอร์");
   }
   micBtn.setPointerCapture?.(e.pointerId);  // release counts even if the finger slides off
   pressed = true;
