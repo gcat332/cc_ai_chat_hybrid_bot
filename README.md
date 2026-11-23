@@ -70,7 +70,7 @@ install, no API key, and it works on GitHub Pages.
   digit ("ศูนย์ แปด หนึ่ง…"), money as "1250 บาท 50 สตางค์", and times as "8 นาฬิกา". The screen
   shows the text as written. Each reply carries a `speech` version for text-to-speech, which phase
   2 can reuse. Names TTS mispronounces go in `SAY_AS` in `config.py`.
-- 🐢 **Pace:** replies are spoken sentence by sentence with a short pause between, at 0.9× speed
+- 🐢 **Pace:** replies are spoken sentence by sentence with a short pause between, at normal (1.0×) speed
   by default. Choose ช้า / ปกติ / เร็ว in the header or on the call screen; the choice is
   remembered. The speech text has "." after each sentence and "," between phrases. Numbers are
   read back in groups (ศูนย์ แปด หนึ่ง, สอง สาม สี่, …), which also helps Genesys' text-to-speech.

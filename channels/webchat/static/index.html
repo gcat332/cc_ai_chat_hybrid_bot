@@ -265,9 +265,9 @@ function thaiUtterance(text) {
 // Speed and pauses. Engines often run Thai sentences together, so each sentence is spoken
 // on its own with a short pause between. The replies' speech text already has "." between
 // sentences and "," between phrases (see callcenter_bot/thai_format.py).
-const RATES = { slow: 0.8, normal: 0.9, fast: 1.05 };
+const RATES = { slow: 0.85, normal: 1.0, fast: 1.15 };
 let speechRate = RATES[localStorage.getItem("speech_rate")] ? localStorage.getItem("speech_rate") : "normal";
-const SENTENCE_PAUSE_MS = 300;
+const SENTENCE_PAUSE_MS = 200;
 let speechGen = 0, finishSpeech = null;
 
 function setRate(value) {
