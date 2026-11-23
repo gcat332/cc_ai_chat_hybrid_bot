@@ -70,35 +70,89 @@ class GenesysConnector:
             received = received[7:]
         return hmac.compare_digest(received.encode(), self.secret.encode())
 
+    def _turn(self, session_id: str, text: str):
+        """One customer turn. Returns (reply, verified_phone). Raises on a bot error.
+        Empty text on a new session greets the customer."""
+        key = "genesys:" + session_id
+        if not text.strip() and key not in self.bot.sessions:
+            reply = self.bot.welcome()
+        else:
+            reply = self.bot.reply(key, text)
+        session = self.bot.sessions.get(key)
+        verified = session.verified_phone if session else None
+        log.info("genesys session=%s in=%r intent=%s handoff=%s end=%s", session_id[:8],
+                 mask_digits(text), reply.intent, reply.handoff, reply.end)
+        if reply.handoff or reply.end:
+            self.bot.reset(key)
+        return reply, verified
+
+    def explain_refusal(self, headers) -> str:
+        """Why authorized() said no, for the log. Never includes the secret or what was received."""
+        names = sorted(k.lower() for k in headers.keys())
+        received = next((v for k, v in headers.items() if k.lower() == self.secret_header), None)
+        if received is None:
+            return f"no {self.secret_header} header (headers received: {', '.join(names)})"
+        value = received[7:] if received.lower().startswith("bearer ") else received
+        hints = []
+        if "${" in value or "credentials." in value:
+            hints.append("looks like an unfilled template: check the credential field name")
+        if value != value.strip():
+            hints.append("has spaces or a line break around it")
+        if len(value.strip()) == len(self.secret) and value.strip() != self.secret:
+            hints.append("same length but different value")
+        return (f"{self.secret_header} does not match: received {len(value)} characters, expected "
+                f"{len(self.secret)}" + (f" ({'; '.join(hints)})" if hints else ""))
+
     def handle(self, body: dict):
-        """Returns (http_status, response_json)."""
+        """Bot Connector (messaging flows). Returns (http_status, response_json)."""
         message = body.get("inputMessage")
         session_id = str(body.get("botSessionId") or "")[:256]
         if not isinstance(message, dict) or not session_id:
             return 400, {"error": "botSessionId and inputMessage are required"}
         params = body.get("parameters") or {}
         reply_format = str(params.get("replyFormat") or self.reply_format)
-        key = "genesys:" + session_id
         text = str(message.get("text") or "")[:1000]
         try:
-            if not text.strip() and key not in self.bot.sessions:
-                reply = self.bot.welcome()            # first turn with no words yet: greet
-            else:
-                reply = self.bot.reply(key, text)
-            session = self.bot.sessions.get(key)
-            verified = session.verified_phone if session else None
+            reply, verified = self._turn(session_id, text)
         except Exception:
             log.exception("genesys session=%s: bot error", session_id[:8])
             return 200, _response(APOLOGY, "COMPLETE", INTENT_HANDOFF, {"handoffReason": "adapter_error"})
 
         say = reply.speech if reply_format == "speech" else reply.text
-        log.info("genesys session=%s in=%r intent=%s handoff=%s end=%s", session_id[:8],
-                 mask_digits(text), reply.intent, reply.handoff, reply.end)
         if reply.handoff:
-            self.bot.reset(key)
             return 200, _response(say, "COMPLETE", INTENT_HANDOFF,
                                   {"handoffReason": reply.intent, "verifiedPhone": verified})
         if reply.end:
             return 200, _response(say, "COMPLETE", INTENT_END, {"verifiedPhone": verified})
         return 200, _response(say, "MOREDATA", INTENT_CONTINUE,
                               {"expectsDigits": "true" if reply.expects == "digits" else "false"})
+
+    def handle_turn(self, body: dict):
+        """Data Action (voice bot flows): Genesys recognises the caller's Thai, sends the words here,
+        and speaks the reply with its own text-to-speech.
+
+        request  {"sessionId": Session.ConversationId, "text": what the caller said ("" to start),
+                  "format": "speech" (default) | "text"}
+        response {"reply", "action": "continue" | "handoff" | "end", "handoffReason",
+                  "verifiedPhone", "expectsDigits"}   all strings, flat, for an easy translation map
+        Returns (http_status, response_json). Bot errors answer 200 + handoff, so the caller is not dropped.
+        """
+        session_id = str(body.get("sessionId") or "")[:256]
+        if not session_id:
+            return 400, {"error": "sessionId is required"}
+        text = str(body.get("text") or "")[:1000]
+        reply_format = str(body.get("format") or "speech")
+        try:
+            reply, verified = self._turn(session_id, text)
+        except Exception:
+            log.exception("genesys session=%s: bot error", session_id[:8])
+            return 200, {"reply": APOLOGY, "action": "handoff", "handoffReason": "adapter_error",
+                         "verifiedPhone": "", "expectsDigits": "false"}
+        action = "handoff" if reply.handoff else "end" if reply.end else "continue"
+        return 200, {
+            "reply": reply.speech if reply_format == "speech" else reply.text,
+            "action": action,
+            "handoffReason": reply.intent if reply.handoff else "",
+            "verifiedPhone": verified or "",
+            "expectsDigits": "true" if reply.expects == "digits" else "false",
+        }

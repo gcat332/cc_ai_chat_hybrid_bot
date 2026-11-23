@@ -86,6 +86,67 @@ class ConnectorTest(unittest.TestCase):
         self.assertFalse(self.c.authorized({}))
         self.assertFalse(GenesysConnector(Bot(), secret="").authorized({"x-bot-secret": ""}))
 
+    def test_refusal_is_explained_without_the_secret(self):
+        why = self.c.explain_refusal({"Content-Type": "application/json"})
+        self.assertIn("no x-bot-secret header", why)
+        self.assertIn("content-type", why)
+        why = self.c.explain_refusal({"x-bot-secret": "${credentials.secret}"})
+        self.assertIn("unfilled template", why)
+        why = self.c.explain_refusal({"x-bot-secret": "s3cret\n"})
+        self.assertIn("line break", why)
+        why = self.c.explain_refusal({"x-bot-secret": "s3crex"})
+        self.assertIn("same length but different", why)
+        for header in ("${credentials.secret}", "s3cret\n", "s3crex", "nope"):
+            self.assertNotIn("s3cret", self.c.explain_refusal({"x-bot-secret": header}).replace(header, ""))
+
+
+class DataActionTest(unittest.TestCase):
+    """POST /api/genesys/turn: a voice bot flow sends the words Genesys recognised, speaks the reply."""
+
+    def setUp(self):
+        db.use_database(":memory:")
+        self.c = GenesysConnector(Bot(), secret="s3cret")
+
+    def say(self, text, session="conv-1", **kw):
+        status, out = self.c.handle_turn({"sessionId": session, "text": text, **kw})
+        self.assertEqual(status, 200)
+        self.assertTrue(all(isinstance(v, str) for v in out.values()), out)   # flat strings for the translation map
+        return out
+
+    def test_whole_call_as_genesys_hears_it(self):
+        out = self.say("")                                        # bot flow starts: greet
+        self.assertIn("สวัสดีค่ะ", out["reply"])
+        self.assertEqual(out["action"], "continue")
+        out = self.say("เช็ค ยอด ทาง ชำระ")                         # how Thai Whisper heard "เช็คยอดค้างชำระ"
+        self.assertEqual(out["expectsDigits"], "true")
+        self.say("ศูนย์ หก สาม หก ห้า สาม แปด เก้า สาม เก้า")
+        out = self.say("แปด เก้า สาม เก้า")
+        self.assertIn("520 บาท 75 สตางค์", out["reply"])            # speech format: money worded for TTS
+        self.assertEqual(out["verifiedPhone"], "0636538939")
+        out = self.say("ขอคุยกับเจ้าหน้าที่")
+        self.assertEqual((out["action"], out["handoffReason"], out["verifiedPhone"]),
+                         ("handoff", "agent", "0636538939"))
+        self.assertNotIn("genesys:conv-1", self.c.bot.sessions)   # handoff ends the bot session
+
+    def test_goodbye_ends(self):
+        self.say("")
+        self.assertEqual(self.say("บายบาย")["action"], "end")
+
+    def test_text_format(self):
+        out = self.say("ติดตามพัสดุ 123456", format="text")
+        self.assertIn("123456", out["reply"])
+
+    def test_sessions_are_separate(self):
+        self.say("เช็คยอด", session="a")
+        self.assertNotIn("520", self.say("8939", session="b")["reply"])
+
+    def test_bad_request_and_bot_error(self):
+        self.assertEqual(self.c.handle_turn({"text": "hi"})[0], 400)
+        self.c.bot.reply = lambda *a: 1 / 0
+        with self.assertLogs("genesys", "ERROR"):
+            out = self.say("สวัสดี")
+        self.assertEqual((out["action"], out["handoffReason"]), ("handoff", "adapter_error"))
+
 
 class ServerRouteTest(unittest.TestCase):
     """The real HTTP endpoint, as Genesys calls it."""
@@ -105,8 +166,9 @@ class ServerRouteTest(unittest.TestCase):
         self.httpd.server_close()
         self.server_module.genesys = self.saved
 
-    def post(self, body, headers):
-        req = urllib.request.Request(self.url, json.dumps(body).encode(), {"Content-Type": "application/json", **headers})
+    def post(self, body, headers, url=None):
+        req = urllib.request.Request(url or self.url, json.dumps(body).encode(),
+                                     {"Content-Type": "application/json", **headers})
         try:
             with urllib.request.urlopen(req) as r:
                 return r.status, json.loads(r.read())
@@ -119,6 +181,14 @@ class ServerRouteTest(unittest.TestCase):
         self.assertEqual(self.post(turn("เช็คยอด"), {"x-bot-secret": "wrong"})[0], 403)
         self.server_module.genesys = GenesysConnector(self.server_module.bot, secret="")
         self.assertEqual(self.post(turn("เช็คยอด"), {})[0], 503)
+
+    def test_data_action_endpoint(self):
+        url = self.url.replace("botconnector", "turn")
+        body = {"sessionId": "http-2", "text": ""}
+        status, out = self.post(body, {"x-bot-secret": "s3cret"}, url)
+        self.assertEqual((status, out["action"]), (200, "continue"))
+        self.assertIn("สวัสดีค่ะ", out["reply"])
+        self.assertEqual(self.post(body, {"x-bot-secret": "wrong"}, url)[0], 403)
 
 
 if __name__ == "__main__":

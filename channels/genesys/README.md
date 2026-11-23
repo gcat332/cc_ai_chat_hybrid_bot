@@ -3,6 +3,10 @@
 > **Phone calls:** for a voice bot callers talk to, use the Audio Connector instead
 > ([../audio_connector/README.md](../audio_connector/README.md)). Bot Connector is confirmed for
 > chat/messaging flows only.
+>
+> **Phone calls with Genesys' own Thai speech:** a voice bot flow can send the caller's words to
+> `POST /api/genesys/turn` through a Data Action and speak the reply. See
+> [voice-bot-flow.md](voice-bot-flow.md) (Thai).
 
 Genesys Cloud runs the call or chat: telephony, speech recognition, text-to-speech, queues and
 agents. This bot decides what to say. Each customer turn, Genesys sends the customer's words to

@@ -15,8 +15,9 @@ Admin page for the tables (customers, orders, tickets): /admin
     POST /api/admin/save    {"table", "row", "old_key"}       -> {"ok": true} or {"error": "..."}
     POST /api/admin/delete  {"table", "key"}                  -> {"ok": true}
 
-Genesys Cloud Bot Connector (see channels/genesys/README.md):
-    POST /api/genesys/botconnector  needs GENESYS_SECRET (sent by Genesys as a header)
+Genesys Cloud (see channels/genesys/README.md), both need GENESYS_SECRET (sent by Genesys as a header):
+    POST /api/genesys/botconnector  Bot Connector, messaging flows
+    POST /api/genesys/turn          Data Action from a voice bot flow (channels/genesys/voice-bot-flow.md)
 
 The tables are in data/callcenter.db (set CALLCENTER_DB to move it), created with demo rows
 the first time.
@@ -75,12 +76,16 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid JSON"})
 
-        if self.path == "/api/genesys/botconnector":
+        if self.path in ("/api/genesys/botconnector", "/api/genesys/turn"):
             if not genesys.enabled:
                 return self._json(503, {"error": "Genesys connector is off: set GENESYS_SECRET"})
             if not genesys.authorized(self.headers):
+                log.warning("refused %s: %s", self.path, genesys.explain_refusal(self.headers))
                 return self._json(403, {"error": "Forbidden"})
-            status, result = genesys.handle(body)
+            if self.path == "/api/genesys/turn":     # Data Action from a voice bot flow
+                status, result = genesys.handle_turn(body)
+            else:                                    # Bot Connector (messaging flows)
+                status, result = genesys.handle(body)
             return self._json(status, result)
 
         if self.path.startswith("/api/admin/"):
@@ -170,6 +175,7 @@ def main():
     if genesys.enabled:
         print(f"Genesys Bot Connector on http://{args.host}:{args.port}/api/genesys/botconnector "
               f"(secret header: {genesys.secret_header})")
+        print(f"Genesys Data Action (voice bot flow) on http://{args.host}:{args.port}/api/genesys/turn")
     if admin_password():
         print(f"Admin page on http://{args.host}:{args.port}/admin  (user: admin)")
     else:
