@@ -93,7 +93,7 @@ async def main_async(args):
     async with make_server(speech, bot, api_key, args.host, args.port, tls=tls) as server:
         scheme = "wss" if tls else "ws"
         print(f"Audio Connector on {scheme}://{args.host}:{args.port}{PATH}  (database: {db.DEFAULT_PATH})")
-        if not tls:
+        if not tls and not os.environ.get("TLS_BY_PROXY"):
             print("No TLS: Genesys needs wss://. Set TLS_CERT_FILE and TLS_KEY_FILE, or put a TLS proxy in front.")
         await server.serve_forever()
 

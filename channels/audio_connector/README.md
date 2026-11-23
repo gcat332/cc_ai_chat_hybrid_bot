@@ -127,7 +127,25 @@ port and that the firewall allows it, or use B.
 
 **B. Cloudflare Tunnel** (no open ports, no certificate to manage)
 
-Run the server without TLS on `localhost:8080`, then:
+One command starts the bot and a tunnel, then prints the address for Genesys:
+
+```bash
+# 1. install cloudflared (Linux x86-64; see Cloudflare's releases page for other systems)
+sudo curl -L -o /usr/local/bin/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+sudo chmod +x /usr/local/bin/cloudflared
+
+# 2. keys
+cp voicebot.env.example voicebot.env      # fill in AUDIO_CONNECTOR_API_KEY and AZURE_SPEECH_KEY
+
+# 3. run
+tools/run_voicebot_demo.sh
+#   Base Connection URI:  wss://xxxx.trycloudflare.com/audiohook   <- paste into Genesys
+```
+
+`FAKE_SPEECH=1 tools/run_voicebot_demo.sh` checks the setup without an Azure key.
+
+To do the same by hand, run the server without TLS on `localhost:8080`, then:
 
 ```bash
 # quick test: prints a temporary https://xxxx.trycloudflare.com address
