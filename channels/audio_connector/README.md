@@ -81,24 +81,71 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload && sudo systemctl enable --now thai-voicebot
 ```
 
-### Public wss:// (TLS)
+### Public wss:// (TLS): no nginx needed
 
-Genesys only connects to a public **wss://** address with a valid certificate. If the server
-already runs nginx with HTTPS (as for AgentHub), add:
+Genesys only connects to a public **wss://** address with a valid certificate. Pick one way:
 
-```nginx
-location /audiohook {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_read_timeout 3600s;      # a call can last long
-    proxy_send_timeout 3600s;
-}
+| Way | Good for | Open ports | Certificate |
+|---|---|---|---|
+| **A. The server does TLS itself** | Production on your own server | 443 (or another port) | Let's Encrypt, or your company's |
+| **B. Cloudflare Tunnel** | Demo, or when ports cannot be opened | none | Cloudflare handles it |
+| C. Caddy | Already using a proxy | 443 | automatic |
+
+**A. The server does TLS itself** (built in, no proxy)
+
+1. Point a domain at the server, e.g. `voicebot.example.com`.
+2. Get a certificate. With Let's Encrypt, port 80 must be free for a moment:
+   ```bash
+   sudo certbot certonly --standalone -d voicebot.example.com
+   ```
+   If AgentHub already uses port 80/443 with its own certificate for this domain, use that
+   certificate's files instead.
+3. Add to `/etc/thai-voicebot.env`:
+   ```bash
+   TLS_CERT_FILE=/etc/letsencrypt/live/voicebot.example.com/fullchain.pem
+   TLS_KEY_FILE=/etc/letsencrypt/live/voicebot.example.com/privkey.pem
+   PORT=443
+   ```
+   Use **fullchain.pem**, not cert.pem, or Genesys will not trust it.
+4. To listen on port 443 without running as root, add to the `[Service]` section of the systemd
+   unit:
+   ```ini
+   AmbientCapabilities=CAP_NET_BIND_SERVICE
+   ```
+   The service must be able to read the key file.
+5. Restart after each certificate renewal:
+   ```bash
+   sudo certbot renew --deploy-hook "systemctl restart thai-voicebot"
+   ```
+
+The server prints `Audio Connector on wss://...`. Check from outside:
+`curl https://voicebot.example.com/` answers `OK`.
+
+If port 443 is taken by AgentHub, use another port (e.g. `PORT=8443`) with the URI
+`wss://voicebot.example.com:8443/audiohook`. Check that your Genesys org accepts a non-standard
+port and that the firewall allows it, or use B.
+
+**B. Cloudflare Tunnel** (no open ports, no certificate to manage)
+
+Run the server without TLS on `localhost:8080`, then:
+
+```bash
+# quick test: prints a temporary https://xxxx.trycloudflare.com address
+cloudflared tunnel --url http://localhost:8080
 ```
 
-Check from outside: `curl https://YOUR-DOMAIN/audiohook` should answer `Invalid API key`.
+Use `wss://xxxx.trycloudflare.com/audiohook` in Genesys. The address changes on every restart.
+For a fixed address on your own domain, create a named tunnel in the Cloudflare dashboard
+(Zero Trust → Networks → Tunnels) that routes your domain to `http://localhost:8080`. Cloudflare
+carries WebSockets with no extra settings.
+
+**C. Caddy** (if you want a proxy, but simpler than nginx)
+
+```bash
+caddy reverse-proxy --from voicebot.example.com --to localhost:8080
+```
+
+Caddy gets and renews the certificate by itself, and carries WebSockets.
 
 ## 3. Genesys Cloud
 

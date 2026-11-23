@@ -224,6 +224,29 @@ class AudioConnectorTest(unittest.IsolatedAsyncioTestCase):
         await g.open()
         self.assertIn("สวัสดีค่ะ", await g.hear())
 
+    async def test_tls_without_a_proxy(self):
+        """wss:// served by the server itself, with a certificate."""
+        import os, ssl, subprocess, tempfile
+        from channels.audio_connector.server import tls_context
+        folder = tempfile.mkdtemp()
+        cert, key = os.path.join(folder, "cert.pem"), os.path.join(folder, "key.pem")
+        try:
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                            "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+                            "-keyout", key, "-out", cert], check=True, capture_output=True)
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("openssl is needed to make a test certificate")
+        db.use_database(":memory:")
+        self.server = await make_server(FakeSpeech(), Bot(), KEY, "127.0.0.1", 0, Settings(**FAST),
+                                        tls=tls_context(cert, key)).__aenter__()
+        port = self.server.sockets[0].getsockname()[1]
+        client = ssl.create_default_context(cafile=cert)       # trust our test certificate
+        ws = await connect(f"wss://localhost:{port}{PATH}", ssl=client, additional_headers={"x-api-key": KEY})
+        self.addAsyncCleanup(ws.close)
+        g = Genesys(ws)
+        await g.open()
+        self.assertIn("สวัสดีค่ะ", await g.hear())
+
     async def test_security_and_health(self):
         await self.start()
         with self.assertRaises(InvalidStatus) as e:

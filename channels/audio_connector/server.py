@@ -5,7 +5,14 @@
     export AZURE_SPEECH_KEY='...'  AZURE_SPEECH_REGION='southeastasia'
     python -m channels.audio_connector.server            # ws://0.0.0.0:8080/audiohook
 
-Genesys reaches it only over public wss:// (put it behind your HTTPS proxy, e.g. nginx).
+Genesys reaches it only over public wss:// with a valid certificate. Either give this server the
+certificate itself (no proxy needed):
+
+    export TLS_CERT_FILE=/etc/letsencrypt/live/bot.example.com/fullchain.pem
+    export TLS_KEY_FILE=/etc/letsencrypt/live/bot.example.com/privkey.pem
+    python -m channels.audio_connector.server --port 443      # wss://bot.example.com/audiohook
+
+or put it behind something that adds TLS (Cloudflare Tunnel, Caddy, a cloud load balancer...).
 GET / answers "OK" for health checks.
 
     --fake-speech   no Azure: callers "speak" with text frames (for tests and local trials)
@@ -16,6 +23,7 @@ import asyncio
 import hmac
 import logging
 import os
+import ssl
 from http import HTTPStatus
 
 from websockets.asyncio.server import serve
@@ -29,8 +37,17 @@ PATH = os.environ.get("AUDIO_CONNECTOR_PATH", "/audiohook")
 log = logging.getLogger("audio_connector")
 
 
+def tls_context(cert_file: str, key_file: str) -> ssl.SSLContext:
+    """TLS for wss:// straight from this server. Use the full chain (e.g. Let's Encrypt
+    fullchain.pem), or Genesys will not trust the certificate."""
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(cert_file, key_file)
+    return context
+
+
 def make_server(speech, bot: Bot, api_key: str, host: str = "0.0.0.0", port: int = 8080,
-                settings: Settings = None):
+                settings: Settings = None, tls: ssl.SSLContext = None):
     """Returns an un-started websockets server (use `async with`)."""
 
     def check(connection, request):
@@ -53,7 +70,7 @@ def make_server(speech, bot: Bot, api_key: str, host: str = "0.0.0.0", port: int
         await CallSession(connection, speech, bot, settings).run()
 
     # Audio frames are small (1600 bytes); compression only adds delay.
-    return serve(handle, host, port, process_request=check, compression=None, max_size=2 ** 20)
+    return serve(handle, host, port, process_request=check, compression=None, max_size=2 ** 20, ssl=tls)
 
 
 async def main_async(args):
@@ -70,8 +87,14 @@ async def main_async(args):
     api_key = os.environ.get("AUDIO_CONNECTOR_API_KEY", "")
     if not api_key:
         log.warning("AUDIO_CONNECTOR_API_KEY is not set: every call will be refused")
-    async with make_server(speech, bot, api_key, args.host, args.port) as server:
-        print(f"Audio Connector on ws://{args.host}:{args.port}{PATH}  (database: {db.DEFAULT_PATH})")
+    cert = args.cert or os.environ.get("TLS_CERT_FILE")
+    key = args.key or os.environ.get("TLS_KEY_FILE")
+    tls = tls_context(cert, key) if cert and key else None
+    async with make_server(speech, bot, api_key, args.host, args.port, tls=tls) as server:
+        scheme = "wss" if tls else "ws"
+        print(f"Audio Connector on {scheme}://{args.host}:{args.port}{PATH}  (database: {db.DEFAULT_PATH})")
+        if not tls:
+            print("No TLS: Genesys needs wss://. Set TLS_CERT_FILE and TLS_KEY_FILE, or put a TLS proxy in front.")
         await server.serve_forever()
 
 
@@ -81,6 +104,8 @@ def main():
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     parser.add_argument("--fake-speech", action="store_true", help="no Azure: for tests and local trials")
     parser.add_argument("--ai", action="store_true", help="AI answers for questions the rules don't cover")
+    parser.add_argument("--cert", help="TLS certificate chain (PEM), or set TLS_CERT_FILE")
+    parser.add_argument("--key", help="TLS private key (PEM), or set TLS_KEY_FILE")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     try:
