@@ -26,7 +26,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest discover -s tests
+        run: |
+          pip install websockets      # for the Audio Connector tests (they need no Azure)
+          python -m unittest discover -s tests
       - name: Build site
         run: python tools/build_pages.py _site
       - uses: actions/configure-pages@v5

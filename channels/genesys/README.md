@@ -1,5 +1,9 @@
 # Genesys Cloud Bot Connector
 
+> **Phone calls:** for a voice bot callers talk to, use the Audio Connector instead
+> ([../audio_connector/README.md](../audio_connector/README.md)). Bot Connector is confirmed for
+> chat/messaging flows only.
+
 Genesys Cloud runs the call or chat: telephony, speech recognition, text-to-speech, queues and
 agents. This bot decides what to say. Each customer turn, Genesys sends the customer's words to
 this server and plays or shows the reply.
