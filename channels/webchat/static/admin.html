@@ -17,7 +17,7 @@
             margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
   #banner[hidden] { display: none; }
   .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-  .tabs { display: flex; gap: 4px; background: #e3e9e6; padding: 4px; border-radius: 10px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; background: #e3e9e6; padding: 4px; border-radius: 10px; }
   .tabs button { border: 0; background: transparent; padding: 7px 14px; border-radius: 8px; font: inherit; cursor: pointer; }
   .tabs button[aria-selected="true"] { background: #fff; color: var(--brand); font-weight: 600;
                                        box-shadow: 0 1px 2px rgba(0,0,0,.08); }
@@ -174,6 +174,24 @@ const TABLES = {
       { f: "close_notes", label: "บันทึกการแก้ไข", wrap: true },
     ],
   },
+  faq: {
+    title: "FAQ", key: "topic", canAdd: true,
+    cols: [
+      { f: "topic", label: "รหัสหัวข้อ", hint: "อังกฤษพิมพ์เล็กและ _ เช่น late_fee" },
+      { f: "title", label: "หัวข้อ", wrap: true },
+      { f: "keywords", label: "คำที่ลูกค้าพูด", wrap: true, textarea: true, hint: "คั่นด้วยจุลภาค (,)" },
+      { f: "answer", label: "คำตอบ", wrap: true, textarea: true, hint: "บอทใช้ทันทีที่บันทึก" },
+      { f: "action", label: "หลังตอบ", options: [["answer", "ตอบอย่างเดียว"], ["handoff", "ยืนยันตัวตนแล้วโอนเจ้าหน้าที่"]],
+        show: v => v === "handoff" ? `<span class="pill due">โอนเจ้าหน้าที่</span>` : `<span class="pill">ตอบอย่างเดียว</span>`, html: true },
+    ],
+  },
+  verify_failures: {
+    title: "ยืนยันตัวตนไม่ผ่าน", key: "id", canAdd: false, canEdit: false,
+    cols: [
+      { f: "identity", label: "เลขบัตรที่ให้มา", show: v => idFmt(v) || "–" },
+      { f: "failed_at", label: "เวลา", show: thaiDate },
+    ],
+  },
 };
 
 const $ = id => document.getElementById(id);
@@ -203,7 +221,7 @@ function render() {
       const cell = c.show ? c.show(v ?? "", r) : esc(v ?? "");
       return `<td class="${c.num ? "num" : ""} ${c.wrap ? "wrap" : ""}">${c.html || !c.show ? cell : esc(cell)}</td>`;
     }).join("")}
-    <td class="actions"><button class="btn ghost small" data-edit="${esc(r[t.key])}">แก้ไข</button>
+    <td class="actions">${t.canEdit === false ? "" : `<button class="btn ghost small" data-edit="${esc(r[t.key])}">แก้ไข</button>`}
       <button class="btn danger small" data-del="${esc(r[t.key])}">ลบ</button></td></tr>`).join("");
   $("grid").innerHTML = head + (body || `<tr><td class="empty" colspan="${t.cols.length + 1}">${q ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูล"}</td></tr>`);
   $("grid").querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openForm(findRow(b.dataset.edit)));
@@ -225,6 +243,9 @@ function openForm(row) {
     if (c.options && !c.free) {
       el = document.createElement("select");
       for (const o of c.options) el.add(Array.isArray(o) ? new Option(o[1], o[0]) : new Option(o, o));
+    } else if (c.textarea) {
+      el = document.createElement("textarea");
+      el.rows = 4;
     } else {
       el = document.createElement("input");
       for (const [k, v] of Object.entries(c.input || {})) el.setAttribute(k, v);
@@ -245,13 +266,13 @@ function openForm(row) {
     $("fields").append(label);
   }
   $("dialog").showModal();
-  $("fields").querySelector("input:not([disabled]), select:not([disabled])")?.focus();
+  $("fields").querySelector("input:not([disabled]), select:not([disabled]), textarea:not([disabled])")?.focus();
 }
 
 $("form").onsubmit = async e => {
   e.preventDefault();
   const t = TABLES[current], row = {};
-  for (const el of $("fields").querySelectorAll("input, select")) if (el.name && !el.disabled) row[el.name] = el.value;
+  for (const el of $("fields").querySelectorAll("input, select, textarea")) if (el.name && !el.disabled) row[el.name] = el.value;
   try {
     await runtime.save(current, row, editing ? editing[t.key] : null);
     $("dialog").close();
@@ -263,7 +284,7 @@ $("form").onsubmit = async e => {
 $("cancel").onclick = () => $("dialog").close();
 
 async function removeRow(row) {
-  const t = TABLES[current], name = row.name || row.number || row[t.key];
+  const t = TABLES[current], name = row.name || row.number || row.title || row.identity || row[t.key];
   if (!confirm(`ลบ${t.title} "${name}" ใช่ไหม? ลบแล้วกู้คืนไม่ได้`)) return;
   try {
     await runtime.remove(current, row[t.key]);
