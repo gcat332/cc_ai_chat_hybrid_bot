@@ -17,8 +17,11 @@ LAUGH = re.compile(r"(?<!\d)5{3,}(?!\d)")
 PARTICLES = (
     "ครับผม", "ครับ", "คับ", "ค่ะ", "คะ", "ค่า", "จ้า", "จ้ะ", "จ๊ะ", "ฮะ", "งับ", "นะคะ", "นะครับ", "นะ",
 )
+# Words that end like a particle keep their ending: ระงับ is not ระ + งับ, บังคับ is not บัง + คับ.
+NOT_PARTICLE_AFTER = {"งับ": "ระ", "คับ": "บัง"}
 TRAILING_PARTICLES = re.compile(
-    "(?:" + "|".join(sorted(map(re.escape, PARTICLES), key=len, reverse=True)) + r")+\s*[.!?~]*$"
+    "(?:" + "|".join((f"(?<!{NOT_PARTICLE_AFTER[p]})" if p in NOT_PARTICLE_AFTER else "") + re.escape(p)
+                     for p in sorted(PARTICLES, key=len, reverse=True)) + r")+\s*[.!?~]*$"
 )
 
 
@@ -28,6 +31,7 @@ def normalize(text: str) -> str:
     text = ZERO_WIDTH.sub("", text).translate(THAI_DIGITS).lower()
     text = LAUGH.sub(" ", text)
     text = STRETCHED.sub(r"\1", text)
+    text = text.replace("แอพ", "แอป")   # both spellings are common; keywords use แอป
     return re.sub(r"\s+", " ", text).strip()
 
 
