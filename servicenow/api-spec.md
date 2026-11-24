@@ -8,13 +8,35 @@
 ไม่มีตารางที่เปิด Table API (`allowWebServiceAccess = false` ทุกตาราง)
 config และข้อมูลแก้ผ่าน UI ของ ServiceNow ตาม role
 
-## Scripted REST: Thai Bot API — `POST /api/x_<co>_ccbot/bot/turn`
+## ตั้งค่าหลัง deploy (platform ไม่ใช่ component ของ app)
+
+**ServiceNow**
+1. สร้าง user `genesys.thai_bot` (Web service access only) แล้วให้แค่ role `x_mfec3_ccbot.api`
+2. เปิด client credentials grant ของ OAuth ตามที่ release รองรับ (servicenow-deploy ตรวจชื่อ property และเวอร์ชันให้ตอน deploy, Q4)
+3. System OAuth → Application Registry → **Create an OAuth API endpoint for external clients**:
+   ตั้งชื่อ `Genesys Thai Bot`, ผูก user ในข้อ 1 สำหรับ client credentials แล้วเก็บ Client ID/Secret ไว้
+4. ทดสอบขอ token:
+   ```bash
+   curl -s -X POST https://<instance>.service-now.com/oauth_token.do \
+     -d grant_type=client_credentials -d client_id=<id> -d client_secret=<secret>
+   ```
+
+**Genesys Cloud**
+5. Integrations → Web Services Data Actions (ตัวใหม่สำหรับ ServiceNow) → Credentials ชนิด **User Defined (OAuth)**:
+   ใส่ client id/secret และขอ token จาก `oauth_token.do` ด้วย grant client credentials
+6. Data Action "Thai Bot Turn": Request URL → `https://<instance>.service-now.com/api/x_mfec3_ccbot/bot/turn`
+   แล้วลบ header `x-bot-secret` (ใช้ OAuth แทน) โดย input/output contract เหมือนเดิม
+7. ทดสอบใน Data Action "Test" ด้วย `{"sessionId":"test-1","text":"","ani":"+66810000002"}` ต้องได้คำทักทาย
+
+> ชื่อเมนูและชนิด credential ใน Genesys/ServiceNow อาจต่างไปตาม release ให้ยึดหน้าจอจริง
+
+## Scripted REST: Thai Bot API — `POST /api/x_mfec3_ccbot/bot/turn`
 
 | | |
 |---|---|
-| Base | `https://<instance>.service-now.com/api/x_<co>_ccbot/bot` (`<co>` = Q1) |
+| Base | `https://<instance>.service-now.com/api/x_mfec3_ccbot/bot` |
 | Resource | `POST /turn` |
-| Auth | integration user ที่มี role `x_<co>_ccbot.api`: Basic หรือ OAuth client credentials (Q7) ผู้เรียกเป็นคนส่ง credential เอง ไม่เก็บไว้ที่นี่ |
+| Auth | **OAuth 2.0 client credentials** (Q7): `Authorization: Bearer <access_token>` จาก `POST https://<instance>.service-now.com/oauth_token.do` token ทำงานในนามของ integration user ที่มีแค่ role `x_mfec3_ccbot.api` ผู้เรียกเป็นคนเก็บ client secret ไม่เก็บไว้ที่นี่ |
 | Content-Type | `application/json; charset=utf-8` |
 | เรียกเมื่อ | ทุก turn ของ Genesys voice Bot Flow (Call Data Action) |
 
@@ -59,7 +81,7 @@ config และข้อมูลแก้ผ่าน UI ของ ServiceNow 
 
 ### Example (คำตอบจริงจากบอท Python ที่ `23eb025`)
 ```http
-POST /api/x_<co>_ccbot/bot/turn
+POST /api/x_mfec3_ccbot/bot/turn
 Content-Type: application/json
 
 {"sessionId": "6f1c…", "text": "อยากปิดบัญชีสินเชื่อบ้านครับ", "ani": "+66810000002"}
